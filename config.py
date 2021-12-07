@@ -27,6 +27,7 @@ class Material:
 
 class PlateConfig:
     def __init__(self, row_num, col_num, thickness, dx=1.0, horizon=3.0):
+        """ row_num=ynum, col_num=xnum"""
         self.row_num = row_num
         self.col_num = col_num
         self.thickness = thickness
@@ -37,8 +38,8 @@ class PlateConfig:
 
     def summary(self):
         print("Plate Configuration:")
-        print("row_num   : {}".format(self.row_num))
-        print("col_num   : {}".format(self.col_num))
+        print("row_num=yn: {}".format(self.row_num))
+        print("col_num=xn: {}".format(self.col_num))
         print("thickness : {}".format(self.thickness))
         print("dx        : {}".format(self.dx))
         print("horizon   : {}".format(self.horizon))
@@ -74,7 +75,7 @@ class LoadConfig:
     def add_pressure(self, sforce_z=0):
         """ 
             convert add even pressure(scalar) or any pressure(array like)to body force
-            sforce_z : scalar or array like shape = (row_num, col_num)
+            sforce_z : scalar or array like shape = (row_num=yn, col_num=xn)
         """
         # self.body_force += sforce_z / self.plate.thickness
         self.body_force += sforce_z / self.plate.thickness
@@ -82,7 +83,7 @@ class LoadConfig:
     def add_body_force(self, bforce_z=0):
         """ 
             add body force even(for scalar), any (for array like)
-            bforce_z : scalar or array like shape = (row_num, col_num)
+            bforce_z : scalar or array like shape = (row_num=y_num, col_num=x_num)
         """
         self.body_force += bforce_z
 
@@ -174,7 +175,7 @@ class BCConfig:
 
         
     def plot_Kirchhoff_BC(self):
-        Kir_BC_image = np.zeros((self.plate.col_num, self.plate.row_num))
+        Kir_BC_image = np.zeros((self.plate.row_num, self.plate.col_num))
 
         for fict_slicer, source_slicer in self.Kirchhoff_BC_clamp_list:
             Kir_BC_image[fict_slicer] = 2
@@ -194,17 +195,6 @@ class BCConfig:
 
         ax.imshow(Kir_BC_image, cmap='copper')
         plt.show()
-        
-    
-
-
-
-
-
-    
-
-
-        
 
 
 
@@ -246,7 +236,7 @@ if __name__=='__main__':
     pressure[6:94, 6:94] = 1
     # load.add_pressure(sforce_z=1)
     load.add_pressure(sforce_z=pressure)
-    # load.plot()
+    load.plot()
 
 
 
@@ -254,7 +244,7 @@ if __name__=='__main__':
     bc_conf.add_dispBC(np.s_[5:7, :], disp_z=1)
     bc_conf.add_dispBC(np.s_[-7:-5, :], disp_z=1)
     bc_conf.add_dispBC(np.s_[49:51, 49:51], disp_z=1)
-    # bc_conf.plot_dispBC()
+    bc_conf.plot_dispBC()
 
     # np.s_[:, 12:7:-1] <- if you want ::-1 then you also have to flip 7&12
     bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )

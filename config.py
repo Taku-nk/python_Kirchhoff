@@ -33,6 +33,7 @@ class PlateConfig:
         self.thickness = thickness
         self.dx = dx
         self.horizon = horizon
+        self.vol = dx * dx * thickness
 
 
 
@@ -42,6 +43,7 @@ class PlateConfig:
         print("col_num=xn: {}".format(self.col_num))
         print("thickness : {}".format(self.thickness))
         print("dx        : {}".format(self.dx))
+        print("vol       : {}".format(self.vol))
         print("horizon   : {}".format(self.horizon))
         print()
 

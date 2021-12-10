@@ -18,11 +18,13 @@ class KirchhoffPD:
         self.bc_config = bc_config
 
         # initial displacement
-        self.disp_z = tf.Variable(self.bc_config.disp_BC)
+        self.disp_z = tf.Variable(self.bc_config.disp_BC, dtype=tf.float32)
 
         # initial coordinate
-        self.init_coord = self.prepare_coord_array()
+        # self.init_coord = self.prepare_coord_array()
+        self.init_coord = tf.constant(self.prepare_coord_array(), dtype=tf.float32)
 
+        self.KERNEL_SIZE = self.calc_kernel_size()
 
 
         # print(self.disp_z)
@@ -45,23 +47,406 @@ class KirchhoffPD:
         self.sim_config.summary()
 
 
-    def run_static(safety_factor=0.5, output_dir="output"):
+    def run_static(self, safety_factor=0.5, output_dir="output"):
+        # KERNEL_SIZE = self.calc_kernel_size()
+        dx = self.plate_config.dx
+        h = self.plate_config.thickness
+        PI = np.pi
+        vol = self.plate_config.vol
+        body_forces = self.load_config.body_force
+        time = tf.Variable(0.0, dtype=tf.float32)
+        dt = tf.constant(self.sim_config.dt, dtype=tf.float32)
+
+         # print("vol = ", vol)
+        # print(PI)
+
+        # print("Kernel size = ", KERNEL_SIZE)
         self.clear_output(output_dir=output_dir)
         # initital output
         # output_one_step()
-        for step in range():
-            pd_forces = calc_PD_force()
+        # print(self.sim_config.total_steps)
+        # disp_z_old = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
+        pd_forces_old = tf.Variable(np.zeros_like(body_forces), dtype=tf.float32) 
 
-            self.disp_z = explicit_time_integrate(self.disp_z)
+        velhalf = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
+        velhalf_old = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
+        # print("pd_forces_old = ", pd_forces_old.shape)
+        # print("disp_z_old.shape = ", disp_z_old.shape)
+        # for step in range(1):
+        # for step in range(self.sim_config.total_steps):
+        for time_step in range(10):
+            pd_forces = self.calc_PD_force()
+
+            # self.disp_z, disp_z_old, velhalf, velhalf_old, pd_forces, pd_forces_old = \
+            self.disp_z, velhalf, velhalf_old, pd_forces, pd_forces_old = \
+                    self.ADR_time_integration(
+                            self.disp_z, velhalf, velhalf_old,
+                            pd_forces, pd_forces_old, body_forces,
+                            time_step ,safety_factor, dt)
+
+            self.apply_disp_BC()
+            self.apply_kirchhoff_BC()
+
+
+                            # self.disp_z, disp_z_old, velhalf, velhalf_old,
+            # forces = pd_forces + body_forces
+            # return forces
+            # print(body_force.shape + )
+            # print(pd_forces.shape)
+            # return pd_forces
+            # forces = 
+            # self.disp_z = self.explicit_time_integrate(self.disp_z, pd_forces)
+            print(f"step {time_step} done")
+
+            # self.disp_z[mask] = disp_BC[mask]
+            # self.apply_disp_BC()
+            # self.apply_kirchhoff_BC()
+
+
+
+    # def ADR_time_integration(self, disp_z, disp_z_old, velhalf, velhalf_old,
+    def ADR_time_integration(self, disp_z, velhalf, velhalf_old,
+                             pd_forces, pd_forces_old, body_forces,
+                             time_step, safety_factor, dt):
+        """ 
+            Adaptive Dynamic Relaxation time integration for static problem
+            Arguments
+            disp:
+            # disp_old:
+
+            velhalf:
+            velhalf_old:
+
+            pd_force:
+            pd_force_old:
             
-            self.disp_z[mask] = disp_BC[mask]
+            time_step
+            safety_factor
+            dt:
+
+            Returns:
+            disp:
+            disp_old:
+
+            velhalf:
+            velhalf_old
+
+            pd_force:
+            pd_force_old:
+        """
+        emod   = tf.constant(self.material.youngs_modulus, dtype=tf.float32)
+        pratio = tf.constant(self.material.poissons_ratio, dtype=tf.float32)
+        thick  = tf.constant(self.plate_config.thickness, dtype=tf.float32)
+        delta  = tf.constant(self.plate_config.horizon, dtype=tf.float32)
+        dx     = tf.constant(self.plate_config.dx, dtype=tf.float32)
+        
+        PI = tf.constant(np.pi, dtype=tf.float32)
+
+        # print("hello!!! = ", PI)
+        # print(delta)
+
+
+        # stable mass vector for ADR
+        para_SMV1 = (3.0 * emod) / ((PI * delta **4) * (1.0 + pratio))
+
+        massvec = 0.25 * dt**2 * ((4.0 * para_SMV1 * PI * thick * delta**2) / dx) * safety_factor 
+
+        cn = 0.0
+        cn1 = 0.0
+        cn2 = 0.0
+
+        # velhalf_old zero mask(zero-->False, else-->True)
+        cn1 = tf.reduce_sum(
+                -disp_z[velhalf_old!=0.0]**2 * \
+                (pd_forces[velhalf_old!=0.0] / massvec - \
+                pd_forces_old[velhalf_old!=0.0] / massvec) / \
+                (dt * velhalf_old[velhalf_old!=0.0])
+                )
+
+        cn2 = tf.reduce_sum(
+                disp_z **2
+                )
+
+
+        if cn2 != 0.0:
+            if(cn1 / cn2) > 0.0:
+                cn = 2.0 * tf.math.sqrt(cn1 / cn2)
+            else:
+                cn = 0.0
+        else:
+            cn = 0.0
+
+        if cn > 2.0:
+            cn = 1.9
+
+
+        # print(cn1)
+        # print(cn2)
+
+        if time_step == 0:
+            velhalf = (1.0 * (dt / massvec) * (pd_forces + body_forces)) / 2.0
+        else:
+            velhalf = ((2.0 - cn * dt) * velhalf_old + 2.0 *  (dt / massvec) * \
+                    (pd_forces + body_forces)) / (2.0 + cn * dt)
+
+        vel = 0.5 * (velhalf_old + velhalf)
+        disp_z = disp_z + velhalf * dt
+
+
+
+
+        velhalf_old = velhalf
+        pd_forces_old = pd_forces
+
+        return  disp_z, velhalf, velhalf_old, pd_forces, pd_forces_old
+
+
+            
+
+    def calc_PD_force(self):
+        """ 
+            return internal forces (e.g. shape=(100,100))
+        """
+        # KERNEL_SIZE = self.calc_kernel_size()
+        # constant value in this simulation
+        dx = tf.constant(self.plate_config.dx          , dtype='float32')
+        horizon = tf.constant(self.plate_config.horizon, dtype='float32')
+        thick = tf.constant(self.plate_config.thickness, dtype='float32')
+        PI = tf.constant(np.pi                         , dtype='float32')
+
+
+        # length of loop index i_k, i_j
+        LEN_i = self.KERNEL_SIZE **2
+        KERNEL_SIZE = self.KERNEL_SIZE
+
+        flectural_rigidity = tf.constant(
+                (self.material.youngs_modulus * thick**3) / \
+                (12.0 * (1.0-self.material.poissons_ratio**2)), dtype='float32')
+        # poisson's ratio
+        nu = tf.constant(self.material.poissons_ratio  , dtype='float32')
+        # every volume is same in linear grid model.
+        vol = tf.constant(self.plate_config.vol        , dtype='float32')
+
+        # smooth factor for j
+        # smooth factor for i_k, i_j
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :, np.newaxis], dtype='float32')
+        smooth_fac_i = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_i))
+
+        # angle for j
+        # angle for i_k, i_j
+        angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
+        angle_i = tf.reshape(angle_kernel, shape=(1, 1, 1, LEN_i))
+
+        # dist^2 for j
+        # dist^2 for i_k, i_j
+        dist_pow2_kernel = tf.constant(self.calc_dist_pow2()[np.newaxis, :, :, np.newaxis], dtype='float32')
+        dist_pow2_i = tf.reshape(dist_pow2_kernel, shape=(1, 1, 1, LEN_i))
+
+
+
+        disp_z_k_j = tf.image.extract_patches(
+                        self.disp_z[tf.newaxis, :, :, tf.newaxis],
+                        sizes=[1, self.KERNEL_SIZE*2-1, self.KERNEL_SIZE*2-1, 1], 
+                        strides=[1, 1, 1, 1],
+                        rates=[1, 1, 1, 1],
+                        # padding='VALID')
+                        padding='SAME') 
+        # it ensures the force output size is same whith the original disp size
+        # it doesn't affect the result. because it is only applied to fict node, or will be masked out
+
+        disp_z_k_j = tf.reshape(
+                disp_z_k_j, 
+                shape=(disp_z_k_j.shape[1] * disp_z_k_j.shape[2], self.KERNEL_SIZE*2-1, self.KERNEL_SIZE*2-1, 1))
+
+        # print("shape disp _z_k_j", disp_z_k_j.shape)
+
+        disp_z_k_j_i = tf.cast(
+                     tf.image.extract_patches(
+                    disp_z_k_j,
+                    sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1],
+                    strides=[1, 1, 1, 1],
+                    rates=[1, 1, 1, 1],
+                    padding='VALID'
+                ), tf.float32)
+        # print("shape disp _z_k_j_i", disp_z_k_j_i.shape)
+
+        # forces = disp_z_k_j_i[:, :, :, KERNEL_SIZE//2, tf.newaxis]
+
+        # forces = tf.cast(disp_z_k_j_i[:, KERNEL_SIZE//2, KERNEL_SIZE//2, tf.newaxis, tf.newaxis, :], tf.float32) -  \
+        # tf.cast(disp_z_k_j_i[:, KERNEL_SIZE//2, KERNEL_SIZE//2,  tf.newaxis, tf.newaxis, tf.newaxis, LEN_i//2], tf.float32)
+        # forces = angle_i
+
+        forces = (8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
+                tf.reduce_sum( # sum j (y direction)
+                tf.reduce_sum( # sum j (x direction)
+                    1.0 / dist_pow2_kernel * (\
+
+                     tf.reduce_sum(
+                         ((disp_z_k_j_i[:, KERNEL_SIZE//2, KERNEL_SIZE//2, tf.newaxis, tf.newaxis, :] - \
+                           disp_z_k_j_i[:, KERNEL_SIZE//2, KERNEL_SIZE//2,  tf.newaxis, tf.newaxis, tf.newaxis, LEN_i//2])/\
+                           dist_pow2_i)*\
+                           (2 + (1 - nu) * (8 * tf.math.cos(angle_i-angle_kernel)**2 - 5))* \
+                          vol * smooth_fac_i, axis=3, keepdims=True) \
+
+                    -tf.reduce_sum(
+                         ((disp_z_k_j_i - \
+                           disp_z_k_j_i[:, :, :, LEN_i//2, tf.newaxis])/\
+                           dist_pow2_i)*\
+                           (2 + (1 - nu) * (8 * tf.math.cos(angle_i-angle_kernel)**2 - 5))* \
+                          vol * smooth_fac_i, axis=3, keepdims=True)\
+
+                ) * vol * smooth_fac_kernel, axis=2, keepdims=True), axis=1, keepdims=True)
+        # force.shape= (10000, 1, 1, 1)
+
+        return tf.reshape(forces, shape=[self.plate_config.row_num, self.plate_config.col_num])
+        # return forces
+
+
+
+
+
+
+    
+
+        # disp_z_k_j_i = tf.
+
+
+
+        # pass
+
+    def calc_kernel_size(self):
+        return int(self.plate_config.horizon / self.plate_config.dx) * 2 + 1
+        # return (self.plate_config.horizon // self.plate_config.dx) * 2 + 1
+
+    
+    def calc_dist_pow2(self):
+        """ calculate xi^2 <- greek xi distance between two nodes)
+            center node's value is force make it '1e-38' to prevent zero division
+        """
+        dx = self.plate_config.dx
+        start = - dx * (self.KERNEL_SIZE - 1) / 2.0
+        stop  =   dx * (self.KERNEL_SIZE - 1) / 2.0
+
+        X, Y = np.meshgrid(np.linspace(start, stop, self.KERNEL_SIZE), np.linspace(start, stop, self.KERNEL_SIZE))
+        xy = np.vstack((X.flatten(), Y.flatten())).T
+        xy_2d = np.reshape(xy, (self.KERNEL_SIZE, self.KERNEL_SIZE, 2))
+
+        dist_pow2 = np.sum(xy_2d**2, axis=-1)
+        dist_pow2[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 1e-10 # prevent zero division
+        return dist_pow2
+
+    def calc_dist_smooth_fac(self):
+        """
+            volume correction factor and mask based on the distance between two node
+            returns: 7 x 7 KERNEL factor
+            volume correction factor and circular mask and center value is zero, so
+            it can be used to exclude center material point in loop
+        """
+
+        dx = self.plate_config.dx
+        horizon = self.plate_config.horizon
+
+        dist_kernel = np.sqrt(self.calc_dist_pow2())
+
+        factor = np.zeros_like(dist_kernel)
+        factor[dist_kernel < horizon + dx/2.0] = (horizon + dx/2.0 - dist_kernel[dist_kernel < horizon + dx/2.0]) / dx
+        factor[dist_kernel < horizon - dx/2.0] = 1.0
+        factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
+        
+        # print(dist_kernel < horizon - dx/2.0)
+
+        return factor
+
+
+
+
+    def calc_angle(self):
+        dx = self.plate_config.dx
+        start = - dx * (self.KERNEL_SIZE - 1) / 2.0
+        stop  =   dx * (self.KERNEL_SIZE - 1) / 2.0
+
+        X, Y = np.meshgrid(np.linspace(start, stop, self.KERNEL_SIZE), np.linspace(start, stop, self.KERNEL_SIZE))
+        xy = np.vstack((X.flatten(), Y.flatten())).T
+        xy_2d = np.reshape(xy, (self.KERNEL_SIZE, self.KERNEL_SIZE, 2))
+
+        # this Y-> X order is important
+        angle = np.arctan2(Y, X)
+        # return (angle / np.pi * 180).round(2)
+        # print("angle calculated by fliped y. np.array of Y is arraynged in assending way")
+        return angle
+
+        # return Y[::-1]
+
+
+
 
             # output_one_step()
+    def explicit_time_integrate(self):
+        pass
+
+    def apply_disp_BC(self):
+        """ 
+            apply displacement boundary condition 
+            only on specified in self.bc_config.disp_BC_mask=True
+            TODO slicer base like Kirchhoff BC  is more reliable
+        """
+
+        # some how tf.tensor wont work this masking, so convert to numpy temporalily
+        mask = self.bc_config.disp_BC_mask
+        np_disp = np.array(self.disp_z)
+        np_disp[mask] = self.bc_config.disp_BC[mask] 
+        self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
+        
+
+    def apply_kirchhoff_BC(self):
+        """ apply kirchhoff Boundary condition. mirror or symmetry"""
+
+        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_clamp_list:
+            np_disp = np.array(self.disp_z)
+            np_disp[fict_slicer] = np_disp[source_slicer]
+            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
+            # print(fict_slicer)
+            # self.disp_z[fict_slicer] = self.disp_z[source_slicer]
+
+        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_simply_list:
+            np_disp = np.array(self.disp_z)
+            np_disp[fict_slicer] = -np_disp[source_slicer]
+            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
+            
+            # print(fict_slicer)
+            # self.disp_z[fict_slicer] = -self.disp_z[source_slicer]
+            # print(self.disp_z[fict_slicer])
+            # flipped_source = -self.disp_z[source_slicer]
+            # self.disp_z[fict_slicer] = flipped_source
+            # self.disp_z[fict_slicer] = self.disp_z[source_slicer]
+
+
+
+
+    def output_one_step(self):
+        """ output traditional cpp style output"""
+        pass
 
     def plot_2D_disp(self):
+        """ plot self.disp_z """
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot()
-        ax.imshow(self.disp_z)
+        cb = ax.imshow(self.disp_z, cmap='viridis')
+        plt.colorbar(cb, ax=ax)
+        plt.show()
+
+    # def plot_row(self, coord_slicer, value_slicer, **kwargs):
+    # def plot_row(self,
+    #         coord_slicer=np.s_[self.plate.row_num//2, :, 0],
+    #         value_slicer=np.s_[self.plate.row_num//2, :] , **kwargs):
+    # def plot_row(self, coord_slicer, value_slicer):
+    def plot_row(self, coord_slicer, value_slicer, **kwargs):
+        """ plot row disp (for now)"""
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot()
+        ax.plot(self.init_coord[coord_slicer], self.disp_z[value_slicer], **kwargs)
+        ax.grid(ls=':')
+        ax.legend()
         plt.show()
 
 
@@ -124,6 +509,8 @@ if __name__ == '__main__':
             thickness = 0.01,
             dx = 0.01,
             horizon = 0.01*3
+            # horizon = 0.01*3.606
+            # horizon = 0.01*4.606
             )
 
     # plate.summary()
@@ -131,7 +518,7 @@ if __name__ == '__main__':
 
     sim_conf = SimConfig(
             dt = 1,
-            total_steps = 1000,
+            total_steps = 100,
             output_every_xx_steps = 10
             )
 
@@ -141,23 +528,22 @@ if __name__ == '__main__':
 
     load = LoadConfig(plate)
     body_load = np.zeros_like(load.get_body_force())
-    body_load[:, 55:57] = 5.0e5 # [N/m^3]
-    load.add_body_force(bforce_z=body_load)
+    body_load[:, 55:57] = -5.0e5 # [N/m^3]
+    # load.add_body_force(bforce_z=body_load)
     # pressure = np.zeros_like(load.get_body_force())
     # pressure[6:94, 6:94] = 1
-    # load.add_pressure(sforce_z=1)
+    load.add_pressure(sforce_z=-1)
     # load.add_pressure(sforce_z=pressure)
     
-    load.plot()
 
 
 
     bc_conf = BCConfig(plate)
-    bc_conf.add_dispBC(np.s_[5:7, :], disp_z=0)
-    bc_conf.add_dispBC(np.s_[-7:-5, :], disp_z=0)
-    bc_conf.add_dispBC(np.s_[:, 5:7], disp_z=0)
-    bc_conf.add_dispBC(np.s_[:, -7:-5], disp_z=0)
-    bc_conf.plot_dispBC()
+
+    # bc_conf.add_dispBC(np.s_[5:7, :], disp_z=0)
+    # bc_conf.add_dispBC(np.s_[-7:-5, :], disp_z=0)
+    # bc_conf.add_dispBC(np.s_[:, 5:7], disp_z=0)
+    # bc_conf.add_dispBC(np.s_[:, -7:-5], disp_z=0)
 
     # np.s_[:, 12:7:-1] <- if you want ::-1 then you also have to flip 7&12
     bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )
@@ -165,15 +551,43 @@ if __name__ == '__main__':
     bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[0:5, :], source_slicer=np.s_[11:6:-1, :],     BC_type='simply' )
     bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[-1:-6:-1, :], source_slicer=np.s_[-12:-7, :], BC_type='simply' )
 
-    bc_conf.plot_Kirchhoff_BC()
 
     kirchhoff_PD = KirchhoffPD(mat, plate, sim_conf, load, bc_conf)
-    kirchhoff_PD.summary()
-    # plt.imshow(kirchhoff_PD.init_coord[:, :, 2])
-    # plt.show()
+    # kirchhoff_PD.summary()
 
-    kirchhoff_PD.clear_output()
-    # kirchhoff_PD.plot_2D_disp()
-    kirchhoff_PD.plot_nodes()
+    # kirchhoff_PD.clear_output()
+
+
+    # load.plot()
+    # bc_conf.plot_dispBC()
+    # bc_conf.plot_Kirchhoff_BC()
+
+    # kirchhoff_PD.plot_nodes()
+    
+    
+    # plt.imshow(kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output"))
+    # print( kirchhoff_PD.calc_PD_force().shape )
+
+    # print(kirchhoff_PD.calc_angle())
+    # print(kirchhoff_PD.calc_dist_pow2())
+    # print(kirchhoff_PD.calc_dist_smooth_fac().round(2))
+    # plt.imshow(kirchhoff_PD.calc_dist_smooth_fac())
+    # plt.imshow(kirchhoff_PD.calc_dist_pow2())
+    
+
+    # print(kirchhoff_PD.calc_kernel_size())
+    kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
+    # kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
+    kirchhoff_PD.plot_2D_disp()
+
+    kirchhoff_PD.plot_row(
+            coord_slicer=np.s_[plate.row_num//2, :, 0], # 0 means x
+            value_slicer=np.s_[plate.row_num//2, :],
+            label="dispZ along x")
+
+    # plt.show()
+    # print(kirchhoff_PD.init_coord.shape)
+    # print(kirchhoff_PD.disp_z.shape)
+
 
 

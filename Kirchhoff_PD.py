@@ -26,6 +26,9 @@ class KirchhoffPD:
 
         self.KERNEL_SIZE = self.calc_kernel_size()
 
+        self.disp_output_list = []
+        self.time_output_list = []
+
 
         # print(self.disp_z)
 
@@ -74,7 +77,14 @@ class KirchhoffPD:
         # print("disp_z_old.shape = ", disp_z_old.shape)
         # for step in range(1):
         # for step in range(self.sim_config.total_steps):
-        for time_step in range(10):
+        self.disp_output_list.append(self.disp_z)
+        self.time_output_list.append(time)
+
+        # for time_step in range(10):
+        for time_step in range(self.sim_config.total_steps):
+            time = time + dt
+
+
             pd_forces = self.calc_PD_force()
 
             # self.disp_z, disp_z_old, velhalf, velhalf_old, pd_forces, pd_forces_old = \
@@ -88,6 +98,14 @@ class KirchhoffPD:
             self.apply_kirchhoff_BC()
 
 
+            print(f"step {time_step} done (time = {time})")
+
+            if ((time_step+1) % (self.sim_config.output_every_xx_steps)) == 0:
+                print(f"output_data, at time = {time}")
+                self.disp_output_list.append(self.disp_z)
+                self.time_output_list.append(time)
+
+                self.save_numpy_result(output_dir=output_dir)
                             # self.disp_z, disp_z_old, velhalf, velhalf_old,
             # forces = pd_forces + body_forces
             # return forces
@@ -96,11 +114,33 @@ class KirchhoffPD:
             # return pd_forces
             # forces = 
             # self.disp_z = self.explicit_time_integrate(self.disp_z, pd_forces)
-            print(f"step {time_step} done")
+
+            # self.save_numpy_result(output_dir=output_dir)
 
             # self.disp_z[mask] = disp_BC[mask]
             # self.apply_disp_BC()
             # self.apply_kirchhoff_BC()
+
+
+    def save_numpy_result(self, output_dir=''):
+        disp_history = np.array(self.disp_output_list)
+        time_history = np.array(self.time_output_list)
+        init_coord = np.array(self.init_coord)
+
+        # np.savetxt("disp_z_history.csv", disp_history, delimiter=',')
+        # np.savetxt("time_history.csv", time_history, delimiter=',')
+        # np.save('disp_z_history.npy', disp_history)
+        # np.save('time_history.npy', time_history)
+        np.save(os.path.join(output_dir,'disp_z_history.npy'), disp_history)
+        np.save(os.path.join(output_dir,'time_history.npy'), time_history)
+        np.save(os.path.join(output_dir,'init_coord.npy'), init_coord)
+
+        print("saved numpy data at {}".format(os.path.join(os.getcwd(), output_dir)))
+
+        # print(disp_history.shape)
+        # print(disp_history)
+        # print(time_history)
+        
 
 
 
@@ -518,8 +558,8 @@ if __name__ == '__main__':
 
     sim_conf = SimConfig(
             dt = 1,
-            total_steps = 100,
-            output_every_xx_steps = 10
+            total_steps = 10000,
+            output_every_xx_steps = 100
             )
 
     # sim_conf.summary()
@@ -584,6 +624,8 @@ if __name__ == '__main__':
             coord_slicer=np.s_[plate.row_num//2, :, 0], # 0 means x
             value_slicer=np.s_[plate.row_num//2, :],
             label="dispZ along x")
+
+    # kirchhoff_PD.save_numpy_result(output_dir="output")
 
     # plt.show()
     # print(kirchhoff_PD.init_coord.shape)

@@ -94,6 +94,9 @@ class KirchhoffPD:
                             pd_forces, pd_forces_old, body_forces,
                             time_step ,safety_factor, dt)
 
+            # print("velhalf    = ", tf.reduce_sum(velhalf))
+            # print("velhalf_old= ", tf.reduce_sum(velhalf_old))
+
             self.apply_disp_BC()
             self.apply_kirchhoff_BC()
 
@@ -154,7 +157,7 @@ class KirchhoffPD:
             disp:
             # disp_old:
 
-            velhalf:
+            # velhalf:
             velhalf_old:
 
             pd_force:
@@ -179,12 +182,16 @@ class KirchhoffPD:
         thick  = tf.constant(self.plate_config.thickness, dtype=tf.float32)
         delta  = tf.constant(self.plate_config.horizon, dtype=tf.float32)
         dx     = tf.constant(self.plate_config.dx, dtype=tf.float32)
+
+        # print(f"{thick:g}")
         
         PI = tf.constant(np.pi, dtype=tf.float32)
 
         # print("hello!!! = ", PI)
         # print(delta)
 
+        # print("pd_forces     = ", tf.reduce_sum(pd_forces))
+        # print("pd_forces_old = ", tf.reduce_sum(pd_forces_old))
 
         # stable mass vector for ADR
         para_SMV1 = (3.0 * emod) / ((PI * delta **4) * (1.0 + pratio))
@@ -202,6 +209,7 @@ class KirchhoffPD:
                 pd_forces_old[velhalf_old!=0.0] / massvec) / \
                 (dt * velhalf_old[velhalf_old!=0.0])
                 )
+        # print(f"cn1 = {cn1}", cn1)
 
         cn2 = tf.reduce_sum(
                 disp_z **2
@@ -209,14 +217,14 @@ class KirchhoffPD:
 
 
         if cn2 != 0.0:
-            if(cn1 / cn2) > 0.0:
+            if((cn1 / cn2) > 0.0):
                 cn = 2.0 * tf.math.sqrt(cn1 / cn2)
             else:
                 cn = 0.0
         else:
             cn = 0.0
 
-        if cn > 2.0:
+        if (cn > 2.0):
             cn = 1.9
 
 
@@ -228,6 +236,9 @@ class KirchhoffPD:
         else:
             velhalf = ((2.0 - cn * dt) * velhalf_old + 2.0 *  (dt / massvec) * \
                     (pd_forces + body_forces)) / (2.0 + cn * dt)
+
+        # print("velhalf     = ", tf.reduce_sum(velhalf))
+        # print("velhalf_old = ", tf.reduce_sum(velhalf_old))
 
         vel = 0.5 * (velhalf_old + velhalf)
         disp_z = disp_z + velhalf * dt
@@ -262,6 +273,8 @@ class KirchhoffPD:
         flectural_rigidity = tf.constant(
                 (self.material.youngs_modulus * thick**3) / \
                 (12.0 * (1.0-self.material.poissons_ratio**2)), dtype='float32')
+
+        # print("flectural_rigidity= {:g}".format(flectural_rigidity))
         # poisson's ratio
         nu = tf.constant(self.material.poissons_ratio  , dtype='float32')
         # every volume is same in linear grid model.
@@ -272,6 +285,8 @@ class KirchhoffPD:
         smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :, np.newaxis], dtype='float32')
         smooth_fac_i = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_i))
 
+        # print("smooth sum = ", vol * tf.reduce_sum(smooth_fac_kernel))
+        # print("analy = ", horizon ** 2 * PI * thick)
         # angle for j
         # angle for i_k, i_j
         angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
@@ -381,6 +396,7 @@ class KirchhoffPD:
             returns: 7 x 7 KERNEL factor
             volume correction factor and circular mask and center value is zero, so
             it can be used to exclude center material point in loop
+
         """
 
         dx = self.plate_config.dx
@@ -392,6 +408,9 @@ class KirchhoffPD:
         factor[dist_kernel < horizon + dx/2.0] = (horizon + dx/2.0 - dist_kernel[dist_kernel < horizon + dx/2.0]) / dx
         factor[dist_kernel < horizon - dx/2.0] = 1.0
         factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
+
+        
+
         
         # print(dist_kernel < horizon - dx/2.0)
 

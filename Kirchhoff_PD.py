@@ -402,6 +402,12 @@ class KirchhoffPD:
         dx = self.plate_config.dx
         horizon = self.plate_config.horizon
 
+        vol = self.plate_config.vol
+        thick  = self.plate_config.thickness
+
+
+
+
         dist_kernel = np.sqrt(self.calc_dist_pow2())
 
         factor = np.zeros_like(dist_kernel)
@@ -409,12 +415,15 @@ class KirchhoffPD:
         factor[dist_kernel < horizon - dx/2.0] = 1.0
         factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
 
-        
+
+        vol_cor_fac = (thick * horizon**2 * np.pi) / np.sum(vol * factor)
+
 
         
         # print(dist_kernel < horizon - dx/2.0)
 
-        return factor
+        # return factor
+        return factor * vol_cor_fac
 
 
 

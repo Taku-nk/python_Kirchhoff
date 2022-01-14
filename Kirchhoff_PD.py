@@ -423,7 +423,8 @@ class KirchhoffPD:
         # print(dist_kernel < horizon - dx/2.0)
 
         # return factor
-        return factor * vol_cor_fac
+        # return factor * vol_cor_fac
+        return factor 
 
 
 

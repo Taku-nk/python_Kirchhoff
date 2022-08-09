@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 import numpy as np
 
@@ -5,13 +6,20 @@ import matplotlib.pyplot as plt
 from matplotlib.image import imread
 from pprint import pprint
 
+# suppress Log
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Force CPU to calculate by hiding GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+
+
 image = imread('./100_100.png')
 images = image[np.newaxis, :, :, :]
 # must contain depth axis
 reds = images[:,:,:,0:1]
 # shape [most outer loop, second loop, third loop, ... , most inner loop]
 # images.shape [1, 100, 100, 3] = [batch, row, col, depth(RGBA)]
-# print(images.shape)
+# print(images.shape)  # ---> [1, 100, 100, 1]
 
 # image = image.
 # print(tf.__version__)
@@ -30,13 +38,14 @@ reds7_7 = tf.image.extract_patches(
         rates=[1, 1, 1, 1],
         padding='VALID')
 
-# print(reds7_7.shape)
+# print(f"reds7_7.shape = {reds7_7.shape}") 
+# --> 
 
 # for i in range(100):
 total_image_num = reds7_7.shape[1] * reds7_7.shape[2] 
 reds7_7 = tf.reshape(reds7_7, (total_image_num, 7, 7))
 
-print(reds7_7.shape)
+print(f"reds7_7.shape = {reds7_7.shape}")
 restored_image = tf.reshape(reds7_7[:, 7//2, 7//2], (94, 94, 1))
 print(restored_image.shape)
 
@@ -70,3 +79,4 @@ plt.show()
 
 
 
+# print(f"images.shape = {images.shape}")

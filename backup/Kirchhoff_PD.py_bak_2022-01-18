@@ -50,62 +50,6 @@ class KirchhoffPD:
         self.sim_config.summary()
 
 
-    def run_dynamic(self, output_dir="output"):
-        """
-        explicit dynamic 
-        """
-        # KERNEL_SIZE = self.calc_kernel_size()
-        dx = self.plate_config.dx
-        h = self.plate_config.thickness
-        PI = np.pi
-        vol = self.plate_config.vol
-        body_forces = self.load_config.body_force
-        time = tf.Variable(0.0, dtype=tf.float32)
-        dt = tf.constant(self.sim_config.dt, dtype=tf.float32)
-
-         # print("vol = ", vol)
-        # print(PI)
-
-        # print("Kernel size = ", KERNEL_SIZE)
-        self.clear_output(output_dir=output_dir)
-        # initital output
-        # output_one_step()
-        # print(self.sim_config.total_steps)
-        disp_z_old = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
-
-        self.disp_output_list.append(self.disp_z)
-        self.time_output_list.append(time)
-
-        # for time_step in range(10):
-        for time_step in range(self.sim_config.total_steps):
-            time = time + dt
-
-
-            pd_forces = self.calc_PD_force()
-
-            # self.disp_z, disp_z_old, velhalf, velhalf_old, pd_forces, pd_forces_old = \
-            self.disp_z, disp_z_old = self.explicit_time_integration(
-                                                self.disp_z, disp_z_old,
-                                                pd_forces, body_forces,
-                                                time_step, dt)
-
-
-            self.apply_disp_BC()
-            self.apply_kirchhoff_BC()
-
-
-            print(f"step {time_step} done (time = {time})")
-
-            if ((time_step+1) % (self.sim_config.output_every_xx_steps)) == 0:
-                print(f"output_data, at time = {time}")
-                self.disp_output_list.append(self.disp_z)
-                self.time_output_list.append(time)
-
-                self.save_numpy_result(output_dir=output_dir)
-
-
-
-
     def run_static(self, safety_factor=0.5, output_dir="output"):
         # KERNEL_SIZE = self.calc_kernel_size()
         dx = self.plate_config.dx
@@ -200,37 +144,6 @@ class KirchhoffPD:
         # print(disp_history)
         # print(time_history)
         
-
-
-    def explicit_time_integration(self, disp_z, disp_z_old,
-                             pd_forces, body_forces,
-                             time_step, dt):
-        """
-        Arguments
-        disp_z: current displacement
-        disp_z_old: one step before
-        pd_force:
-        body_force:
-        time_step:
-        dt
-        """
-        emod   = tf.constant(self.material.youngs_modulus, dtype=tf.float32)
-        pratio = tf.constant(self.material.poissons_ratio, dtype=tf.float32)
-        thick  = tf.constant(self.plate_config.thickness, dtype=tf.float32)
-        delta  = tf.constant(self.plate_config.horizon, dtype=tf.float32)
-        dx     = tf.constant(self.plate_config.dx, dtype=tf.float32)
-        dens = tf.constant(self.material.density, dtype=tf.float32)
-
-        # print(f"{thick:g}")
-        
-        PI = tf.constant(np.pi, dtype=tf.float32)
-
-        # explicit time integration
-        disp_z_new = dt * dt * (pd_forces + body_forces) / dens + 2.0 * disp_z - disp_z_old
-
-        # disp_z_old = disp_z 
-        
-        return disp_z_new, disp_z
 
 
 
@@ -510,8 +423,8 @@ class KirchhoffPD:
         # print(dist_kernel < horizon - dx/2.0)
 
         # return factor
-        return factor * vol_cor_fac
-        # return factor 
+        # return factor * vol_cor_fac
+        return factor 
 
 
 
@@ -537,8 +450,8 @@ class KirchhoffPD:
 
 
             # output_one_step()
-    # def explicit_time_integrate(self):
-    #     pass
+    def explicit_time_integrate(self):
+        pass
 
     def apply_disp_BC(self):
         """ 

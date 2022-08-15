@@ -416,16 +416,16 @@ class KirchhoffPD:
         psi2_k_j = tf.image.extract_patches(psi2, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         psi3_k_j = tf.image.extract_patches(psi3, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         
-        forces = -(8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
+        forces = (8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
                 tf.reduce_sum(\
 
                     1.0 / dist_pow2_kernel * \
                     ( \
                     (1.0 + nu) * \
-                    (psi1_k_j - psi1_k_j[:, :, :, LEN_j//2, tf.newaxis]) + \
+                    (psi1_k_j[:, :, :, LEN_j//2, tf.newaxis] - psi1_k_j) + \
                     4.0 * (1.0 - nu) * (\
-                    (psi2_k_j - psi2_k_j[:, :, :, LEN_j//2, tf.newaxis]) * tf.sin(2*angle_kernel) + \
-                    (psi3_k_j - psi3_k_j[:, :, :, LEN_j//2, tf.newaxis]) * tf.cos(2*angle_kernel)
+                    (psi2_k_j[:, :, :, LEN_j//2, tf.newaxis] - psi2_k_j) * tf.sin(2*angle_kernel) + \
+                    (psi3_k_j[:, :, :, LEN_j//2, tf.newaxis] - psi3_k_j) * tf.cos(2*angle_kernel)
                     )) *\
                     vol * smooth_fac_kernel \
                     , axis=3, keepdims=True)
@@ -776,7 +776,7 @@ if __name__ == '__main__':
 
     sim_conf = SimConfig(
             dt = 1,
-            total_steps = 100,
+            total_steps = 10000,
             output_every_xx_steps = 100
             )
 

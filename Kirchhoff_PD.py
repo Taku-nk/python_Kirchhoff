@@ -339,7 +339,7 @@ class KirchhoffPD:
         return  disp_z, velhalf, velhalf_old, pd_forces, pd_forces_old
 
 
-    def calc_PD_force2(self):
+    def calc_PD_force(self):
         """
             performance improved by reduces loop nesting depth.
             return internal forces (e.g. shape=(100, 100))
@@ -378,6 +378,7 @@ class KirchhoffPD:
                         padding='SAME')  # shape=(1, 112, 112, 49)
         # it ensures the force output size is same whith the original disp size
         # it doesn't affect the result. because it is only applied to fict node, or will be masked out
+        # print(disp_z_k_j)
 
 
 
@@ -390,35 +391,38 @@ class KirchhoffPD:
         # calculate psi
         psi1 = tf.reduce_sum(
                (disp_z_k_j - 
-                   disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis])\
-                / dist_pow2_kernel * vol * smooth_fac_kernel 
+                disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis]) /\
+                dist_pow2_kernel * vol * smooth_fac_kernel 
                 , axis=3, keepdims=True)
 
         psi2 = tf.reduce_sum(
                (disp_z_k_j - 
-                   disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis]) /\
-                   dist_pow2_kernel * vol * smooth_fac_kernel *\
-                   tf.sin(2*angle_kernel)
+                disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis]) /\
+                dist_pow2_kernel * vol * smooth_fac_kernel *\
+                tf.sin(2*angle_kernel)
                 , axis=3, keepdims=True)
 
         psi3 = tf.reduce_sum(
                (disp_z_k_j - 
-                   disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis]) /\
-                   dist_pow2_kernel * vol * smooth_fac_kernel *\
-                   tf.cos(2*angle_kernel)
+                disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis]) /\
+                dist_pow2_kernel * vol * smooth_fac_kernel *\
+                tf.cos(2*angle_kernel)
                 , axis=3, keepdims=True)
 
+        # print(disp_z_k_j.shape)
+        # print(disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis].shape)
 
         psi1_k_j = tf.image.extract_patches(psi1, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         psi2_k_j = tf.image.extract_patches(psi2, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         psi3_k_j = tf.image.extract_patches(psi3, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         
-        forces = (8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
+        forces = -(8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
                 tf.reduce_sum(\
 
                     1.0 / dist_pow2_kernel * \
                     ( \
-                    (1.0 + nu) * (psi1_k_j - psi1_k_j[:, :, :, LEN_j//2, tf.newaxis]) + \
+                    (1.0 + nu) * \
+                    (psi1_k_j - psi1_k_j[:, :, :, LEN_j//2, tf.newaxis]) + \
                     4.0 * (1.0 - nu) * (\
                     (psi2_k_j - psi2_k_j[:, :, :, LEN_j//2, tf.newaxis]) * tf.sin(2*angle_kernel) + \
                     (psi3_k_j - psi3_k_j[:, :, :, LEN_j//2, tf.newaxis]) * tf.cos(2*angle_kernel)
@@ -428,10 +432,11 @@ class KirchhoffPD:
         
         # print(forces.shape)
 
+        # print(psi1)
         return tf.reshape(forces, shape=[self.plate_config.row_num, self.plate_config.col_num])
             
 
-    def calc_PD_force(self):
+    def calc_PD_force2(self):
         """ 
             return internal forces (e.g. shape=(100,100))
         """

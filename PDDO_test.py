@@ -620,7 +620,6 @@ class KirchhoffPD:
         print(f_kj.shape)
         # plt.imshow(tf.reshape(smooth_fac_kernel, shape=(7,7,1)))
         # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
-         
 
         plt.show()
 
@@ -633,10 +632,42 @@ class KirchhoffPD:
 
         # plt.imshow(f) 
         # plt.show()
+    def calc_shape_matrix(self):
+        """calc shape matrix A shape=(1, 112, 112, 6, 6, 1)"""
+        LEN_j= self.KERNEL_SIZE**2
+
+        vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
+    
+        # smooth factor for j
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j))# shape[1, 1, 1, 49]-> (1, 1, 1, 1, 1, 49)
+
+
+
+        shape_mask = self.family_shape_mask()  # (1, 112, 112, 49) -> (1, 112, 112, 1, 1, 49)
+
+        dist_matrix = self.calc_dist_matrix()  # (6, 6, 49) -> (1, 1, 1, 6, 6, 49)
+        weight = self.weight_func_w() # (49) ->                (1, 1, 1, 1, 1, 49)
+
+        shape_matrix = \
+            tf.reduce_sum(
+                    shape_mask[:, :, :, tf.newaxis, tf.newaxis, :]* \
+                    smooth_fac_kernel[:, :, :, tf.newaxis, tf.newaxis, :]*\
+                    weight[tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, :] * \
+                    dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :] * \
+                    vol \
+                , axis=5, keepdims=True)
+
+        # print(shape_matrix.shape)
+        # print(shape_mask[:, :, :, tf.newaxis, tf.newaxis, :])
+        # print(dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :].shape)
+        # return shape_matrix
+
+
         
 
-    def weight_func_w(self, shape=(1, 1, 1, 7*7)):
-        """ return gamma weight function  default shape == (1, 1, 1, 7^2) """
+    def weight_func_w(self):
+        """ return gamma weight function  default shape == (7^2) """
         LEN_j= self.KERNEL_SIZE**2
         horizon = tf.constant(self.plate_config.horizon, dtype='float32')
 
@@ -650,7 +681,77 @@ class KirchhoffPD:
         # plt.imshow(tf.reshape(weight, shape=(7,7)))
         # plt.show()
 
-        return weight
+        return tf.reshape(weight, shape=(LEN_j)) # shape = kind(7, 7)
+
+
+    def calc_dist_matrix(self):
+        """ 
+            return dist matrix [6,6] for PD shape matrix for PDDO_2D 
+            Every material point has same shape matrix except boundary 
+            for this grid analysis. 
+            shape=(1, 1, 1, 49, 6, 6) (it will be broadcasted and sumed to (1, 112, 112, 6, 6))
+            this matrix is not yet integrated or multiplied by weight function.
+        """
+        dx = tf.constant(self.plate_config.dx          , dtype='float32')
+        horizon = tf.constant(self.plate_config.horizon, dtype='float32')
+        thick = tf.constant(self.plate_config.thickness, dtype='float32')
+        PI = tf.constant(np.pi                         , dtype='float32')
+        LEN_j= self.KERNEL_SIZE**2
+        vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
+
+
+        hor_coord_kernel = self.calc_horizon_coord()
+        xi_x = tf.reshape(tf.constant(hor_coord_kernel[:, 0], dtype='float32'), shape=(LEN_j))
+        xi_y = tf.reshape(tf.constant(hor_coord_kernel[:, 1], dtype='float32'), shape=(LEN_j))
+
+
+        dist_matrix = tf.Variable(
+                [[tf.ones(LEN_j), xi_x        , xi_y        , xi_x**2        , xi_y**2        , xi_x*xi_y],
+                 [xi_x          , xi_x**2     , xi_x*xi_y   , xi_x**3        , xi_x*xi_y**2   , xi_x**2*xi_y],
+                 [xi_y          , xi_x*xi_y   , xi_y**2     , xi_x**2*xi_y   , xi_y**3        , xi_x*xi_y**2],
+                 [xi_x**2       , xi_x**3     , xi_x**2*xi_y, xi_x**4        , xi_x**2*xi_y**2, xi_x**3*xi_y],
+                 [xi_y**2       , xi_x*xi_y**2, xi_y**3     , xi_x**2*xi_y**2, xi_y**4        , xi_x*xi_y**3],
+                 [xi_x*xi_y     , xi_x**2*xi_y, xi_x*xi_y**2, xi_x**3*xi_y   , xi_x*xi_y**3   , xi_x**2*xi_y**2]])
+        # print(dist_matrix.shape)
+
+        return dist_matrix # shape = (6, 6, 49)
+
+    def get_known_coeff_b(self):
+        """
+            return: known coeffitient for PDDO 2D
+            shape = (6,6)
+        """
+        coeff_b = tf.Variable(
+                [
+                    [1, 0, 0, 0, 0, 0], 
+                    [0, 1, 0, 0, 0, 0], 
+                    [0, 0, 1, 0, 0, 0], 
+                    [0, 0, 0, 2, 0, 0], 
+                    [0, 0, 0, 0, 2, 0], 
+                    [0, 0, 0, 0, 0, 1], 
+                ])
+        return coeff_b # shape = (6, 6)
+
+
+
+    def family_shape_mask(self):
+        """
+            this returns family shape mask based on plage shape.
+            shape=(1, 112, 112, 49) 
+            if MP exists then 1, otherwise 0.
+        """
+        plate = tf.ones(shape=(1, self.plate_config.row_num, self.plate_config.col_num, 1))
+        plate_mask \
+             = tf.image.extract_patches(
+                        plate,
+                        sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], 
+                        strides=[1, 1, 1, 1],
+                        rates=[1, 1, 1, 1],
+                        padding='SAME')  # shape=(1, 112, 112, 49)
+
+        return plate_mask #shape=(1, 112, 112, 49)
+
+
 
 
     def plot_3D(self, nodes):
@@ -970,10 +1071,17 @@ if __name__ == '__main__':
     
 
     # kirchhoff_PD.PDDO_2D()
-    kirchhoff_PD.weight_func_w()
+    # kirchhoff_PD.calc_dist_matrix()
+    kirchhoff_PD.calc_shape_matrix()
+    # print(kirchhoff_PD.family_shape_mask().shape)
+    # plt.imshow(tf.reshape(kirchhoff_PD.family_shape_mask()[0, 0, 0, :], shape=(7,7)))
+    # plt.show()
+    # print(tf.reshape(kirchhoff_PD.family_shape_mask()[0, 0, 0, :], shape=(7,7)))
+    # print(kirchhoff_PD.weight_func_w(shape=(7,7)).shape)
 
     
     # kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
+    
 
 
 

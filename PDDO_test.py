@@ -6,7 +6,10 @@ import tensorflow as tf
 import os
 import shutil
 
+from math import e
+
 from time import time
+
 
 
 
@@ -341,6 +344,7 @@ class KirchhoffPD:
 
 
     def calc_PD_force(self):
+    # def calc_PD_force2(self):
         """
             performance improved by reduces loop nesting depth.
             return internal forces (e.g. shape=(100, 100))
@@ -369,6 +373,7 @@ class KirchhoffPD:
 
         angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
         angle_kernel = tf.reshape(angle_kernel, shape=(1, 1, 1, LEN_j))
+
 
 
         disp_z_k_j = tf.image.extract_patches(
@@ -413,14 +418,14 @@ class KirchhoffPD:
         # print(disp_z_k_j.shape)
         # print(disp_z_k_j[:, :, :, LEN_j//2, tf.newaxis].shape)
 
-        start = time()
 
         psi1_k_j = tf.image.extract_patches(psi1, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         psi2_k_j = tf.image.extract_patches(psi2, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
         psi3_k_j = tf.image.extract_patches(psi3, sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='SAME')  # shape=(1, 112, 112, 49)
 
-        print
         
+        # start = time()
+
         forces = (8.0 * flectural_rigidity) / (PI**2 * horizon**4 * thick**3) * \
                 tf.reduce_sum(\
 
@@ -435,12 +440,14 @@ class KirchhoffPD:
                     vol * smooth_fac_kernel \
                     , axis=3, keepdims=True)
         
+        # print(f"Time: {time() - start}")
         # print(forces.shape)
 
         # print(psi1)
         return tf.reshape(forces, shape=[self.plate_config.row_num, self.plate_config.col_num])
             
 
+    # def calc_PD_force(self):
     def calc_PD_force2(self):
         """ 
             return internal forces (e.g. shape=(100,100))
@@ -486,6 +493,7 @@ class KirchhoffPD:
 
 
 
+        # start = time()
         disp_z_k_j = tf.image.extract_patches(
                         self.disp_z[tf.newaxis, :, :, tf.newaxis],
                         sizes=[1, self.KERNEL_SIZE*2-1, self.KERNEL_SIZE*2-1, 1], 
@@ -493,6 +501,7 @@ class KirchhoffPD:
                         rates=[1, 1, 1, 1],
                         # padding='VALID')
                         padding='SAME') 
+        # print(f"Time: {time() - start}")
         # it ensures the force output size is same whith the original disp size
         # it doesn't affect the result. because it is only applied to fict node, or will be masked out
 
@@ -502,6 +511,7 @@ class KirchhoffPD:
 
         # print("shape disp _z_k_j", disp_z_k_j.shape)
 
+
         disp_z_k_j_i = tf.cast(
                      tf.image.extract_patches(
                     disp_z_k_j,
@@ -510,6 +520,7 @@ class KirchhoffPD:
                     rates=[1, 1, 1, 1],
                     padding='VALID'
                 ), tf.float32)
+
         # print("shape disp _z_k_j_i", disp_z_k_j_i.shape)
 
         # forces = disp_z_k_j_i[:, :, :, KERNEL_SIZE//2, tf.newaxis]
@@ -551,6 +562,103 @@ class KirchhoffPD:
     
 
         # disp_z_k_j_i = tf.
+    def PDDO_2D(self):
+        """
+           implement peridynamic differential opperator 
+        """
+        ########################################################################
+        # constants
+        ########################################################################
+        dx = tf.constant(self.plate_config.dx          , dtype='float32')
+        horizon = tf.constant(self.plate_config.horizon, dtype='float32')
+        thick = tf.constant(self.plate_config.thickness, dtype='float32')
+        PI = tf.constant(np.pi                         , dtype='float32')
+        LEN_j= self.KERNEL_SIZE**2
+
+        vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
+    
+        # smooth factor for j
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j))
+
+
+        # dist^2 for j
+        dist_pow2_kernel = tf.constant(self.calc_dist_pow2()[np.newaxis, :, :], dtype='float32')
+        dist_pow2_kernel = tf.reshape(dist_pow2_kernel, shape=(1, 1, 1, LEN_j))
+
+        #  local coord xi
+        # you have to check the local coordinate direction. it might cause problems
+        hor_coord_kernel = self.calc_horizon_coord()
+        xi_x_kernel = tf.reshape(tf.constant(hor_coord_kernel[:, 0], dtype='float32'), shape=(1, 1, 1, LEN_j))
+        xi_y_kernel = tf.reshape(tf.constant(hor_coord_kernel[:, 1], dtype='float32'), shape=(1, 1, 1, LEN_j))
+        print(xi_y_kernel)
+
+        # angle
+        angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
+        angle_kernel = tf.reshape(angle_kernel, shape=(1, 1, 1, LEN_j))
+
+        ########################################################################
+        ########################################################################
+
+        # global coord 
+        x = self.init_coord[:, :, 0]
+        y = self.init_coord[:, :, 1]
+
+        # functions to analyze (dummy)
+        f = x**2 + y**2
+
+        # print(type(f))
+
+
+        f_kj = tf.image.extract_patches(
+                        f[tf.newaxis, :, :, tf.newaxis],
+                        sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], 
+                        strides=[1, 1, 1, 1],
+                        rates=[1, 1, 1, 1],
+                        padding='SAME')  # shape=(1, 112, 112, 49)
+
+        print(f_kj.shape)
+        # plt.imshow(tf.reshape(smooth_fac_kernel, shape=(7,7,1)))
+        # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
+         
+
+        plt.show()
+
+        # psi1 = tf.reduce_sum(
+        #        (f_kj -
+        #         f_kj[:, :, :, LEN_j//2, tf.newaxis]) /\
+        #         dist_pow2_kernel * vol * smooth_fac_kernel 
+        #         , axis=3, keepdims=True)
+
+
+        # plt.imshow(f) 
+        # plt.show()
+        
+
+    def weight_func_w(self, shape=(1, 1, 1, 7*7)):
+        """ return gamma weight function  default shape == (1, 1, 1, 7^2) """
+        LEN_j= self.KERNEL_SIZE**2
+        horizon = tf.constant(self.plate_config.horizon, dtype='float32')
+
+        dist_pow2_kernel = tf.constant(self.calc_dist_pow2()[np.newaxis, :, :], dtype='float32')
+        dist_pow2_kernel = tf.reshape(dist_pow2_kernel, shape=(1, 1, 1, LEN_j))
+        # dist_kernel      = tf.sqrt(dist_pow2_kernel)
+
+        weight = e ** (- 4.0 * dist_pow2_kernel / horizon**2)
+
+        # print(weight.shape)
+        # plt.imshow(tf.reshape(weight, shape=(7,7)))
+        # plt.show()
+
+        return weight
+
+
+    def plot_3D(self, nodes):
+        """
+        Arguments
+            nodes : np.array, size=(n, 3) (n nodes, 3D)
+        """
+        pass
 
 
 
@@ -576,6 +684,25 @@ class KirchhoffPD:
         dist_pow2 = np.sum(xy_2d**2, axis=-1)
         dist_pow2[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 1e-10 # prevent zero division
         return dist_pow2
+
+
+    def calc_horizon_coord(self):
+        """
+        return xi_x, xi_y (distance between two nodes (in a family member))
+        shape=(KERNEL_SIZE^2, 2) <- 2 for x and y
+        returns stack of xi_x and xi_y.
+        """
+        dx = self.plate_config.dx
+        start = - dx * (self.KERNEL_SIZE - 1) / 2.0
+        stop  =   dx * (self.KERNEL_SIZE - 1) / 2.0
+
+        X, Y = np.meshgrid(np.linspace(start, stop, self.KERNEL_SIZE), np.linspace(start, stop, self.KERNEL_SIZE))
+        xy = np.vstack((X.flatten(), Y.flatten())).T
+        # xy_2d = np.reshape(xy, (self.KERNEL_SIZE, self.KERNEL_SIZE, 2))
+        return xy
+
+
+
 
     def calc_dist_smooth_fac(self):
         """
@@ -755,6 +882,8 @@ class KirchhoffPD:
 
 if __name__ == '__main__':
 
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
     from matplotlib import pyplot as plt 
     import numpy as np
 
@@ -764,16 +893,23 @@ if __name__ == '__main__':
             nu= 0.3)
 
     # mat.summary()
+    dx = 0.01
+    thickness = 0.01
+    horizon = dx * 3.75
 
 
     plate = PlateConfig(
             row_num = 112, # y num
             col_num = 112, # x num
-            thickness = 0.01,
-            dx = 0.01,
-            horizon = 0.01*3
+            thickness = thickness,
+            dx = dx,
+            horizon = horizon
+            # horizon = 0.01*3.606
             # horizon = 0.01*3.606
             # horizon = 0.01*4.606
+            # horizon = 0.01*5.606
+            # horizon = 0.01*6.606
+            # horizon = 0.01*7.606
             )
 
     # plate.summary()
@@ -781,8 +917,8 @@ if __name__ == '__main__':
 
     sim_conf = SimConfig(
             dt = 1,
-            total_steps = 1000,
-            output_every_xx_steps = 1000
+            total_steps = 100,
+            output_every_xx_steps = 100
             )
 
     # sim_conf.summary()
@@ -831,29 +967,15 @@ if __name__ == '__main__':
     # plt.imshow(kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output"))
     # print( kirchhoff_PD.calc_PD_force().shape )
 
-    # print(kirchhoff_PD.calc_angle())
-    # print(kirchhoff_PD.calc_dist_pow2())
-    # print(kirchhoff_PD.calc_dist_smooth_fac().round(2))
-    # plt.imshow(kirchhoff_PD.calc_dist_smooth_fac())
-    # plt.imshow(kirchhoff_PD.calc_dist_pow2())
     
 
-    # print(kirchhoff_PD.calc_kernel_size())
-    kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
+    # kirchhoff_PD.PDDO_2D()
+    kirchhoff_PD.weight_func_w()
+
+    
     # kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
 
-    # kirchhoff_PD.plot_2D_disp()
 
-    # kirchhoff_PD.plot_row(
-    #         coord_slicer=np.s_[plate.row_num//2, :, 0], # 0 means x
-    #         value_slicer=np.s_[plate.row_num//2, :],
-    #         label="dispZ along x")
-
-    # kirchhoff_PD.save_numpy_result(output_dir="output")
-
-    # plt.show()
-    # print(kirchhoff_PD.init_coord.shape)
-    # print(kirchhoff_PD.disp_z.shape)
 
 
 

@@ -468,7 +468,6 @@ class KirchhoffPD:
                 (self.material.youngs_modulus * thick**3) / \
                 (12.0 * (1.0-self.material.poissons_ratio**2)), dtype='float32')
 
-        # print("flectural_rigidity= {:g}".format(flectural_rigidity))
         # poisson's ratio
         nu = tf.constant(self.material.poissons_ratio  , dtype='float32')
         # every volume is same in linear grid model.
@@ -479,8 +478,6 @@ class KirchhoffPD:
         smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :, np.newaxis], dtype='float32')
         smooth_fac_i = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_i))
 
-        # print("smooth sum = ", vol * tf.reduce_sum(smooth_fac_kernel))
-        # print("analy = ", horizon ** 2 * PI * thick)
         # angle for j
         # angle for i_k, i_j
         angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
@@ -501,7 +498,6 @@ class KirchhoffPD:
                         rates=[1, 1, 1, 1],
                         # padding='VALID')
                         padding='SAME') 
-        # print(f"Time: {time() - start}")
         # it ensures the force output size is same whith the original disp size
         # it doesn't affect the result. because it is only applied to fict node, or will be masked out
 
@@ -509,7 +505,6 @@ class KirchhoffPD:
                 disp_z_k_j, 
                 shape=(disp_z_k_j.shape[1] * disp_z_k_j.shape[2], self.KERNEL_SIZE*2-1, self.KERNEL_SIZE*2-1, 1))
 
-        # print("shape disp _z_k_j", disp_z_k_j.shape)
 
 
         disp_z_k_j_i = tf.cast(
@@ -521,7 +516,6 @@ class KirchhoffPD:
                     padding='VALID'
                 ), tf.float32)
 
-        # print("shape disp _z_k_j_i", disp_z_k_j_i.shape)
 
         # forces = disp_z_k_j_i[:, :, :, KERNEL_SIZE//2, tf.newaxis]
 
@@ -591,7 +585,6 @@ class KirchhoffPD:
         hor_coord_kernel = self.calc_horizon_coord()
         xi_x_kernel = tf.reshape(tf.constant(hor_coord_kernel[:, 0], dtype='float32'), shape=(1, 1, 1, LEN_j))
         xi_y_kernel = tf.reshape(tf.constant(hor_coord_kernel[:, 1], dtype='float32'), shape=(1, 1, 1, LEN_j))
-        print(xi_y_kernel)
 
         # angle
         angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
@@ -607,7 +600,6 @@ class KirchhoffPD:
         # functions to analyze (dummy)
         f = x**2 + y**2
 
-        # print(type(f))
 
 
         f_kj = tf.image.extract_patches(
@@ -617,9 +609,33 @@ class KirchhoffPD:
                         rates=[1, 1, 1, 1],
                         padding='SAME')  # shape=(1, 112, 112, 49)
 
-        print(f_kj.shape)
+
+        shape_matrix = self.calc_shape_matrix() #shape == (1, 112, 112, 6, 6)
+        # print(shape_matrix.shape)
+
+        # shape == (6, 6) -> (1, 112, 112, 6, 6)
+
+        # known_coeff_b = tf.broadcast_to(
+        #                     self.get_known_coeff_b()[tf.newaxis, tf.newaxis, tf.newaxis, :, :],
+        #                     shape=(1, self.plate_config.row_num, self.plate_config.col_num, 6, 6)
+        #                     ) 
+        known_coeff_b = self.get_known_coeff_b()[tf.newaxis, tf.newaxis, tf.newaxis, :, :]
+                            
+
+
+        # unknown coefficients a to be solved
+        unknown_coeff_a = tf.linalg.inv(shape_matrix) @ known_coeff_b
+
+        print(unknown_coeff_a.shape)
+        # print(known_coeff_b.shape)
+        # print(tf.linalg.inv(shape_matrix).shape)
+
+
+
+        # print(f_kj.shape)
         # plt.imshow(tf.reshape(smooth_fac_kernel, shape=(7,7,1)))
         # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
+        # plt.imshow(f)
 
         plt.show()
 
@@ -633,7 +649,7 @@ class KirchhoffPD:
         # plt.imshow(f) 
         # plt.show()
     def calc_shape_matrix(self):
-        """calc shape matrix A shape=(1, 112, 112, 6, 6, 1)"""
+        """calc shape matrix A shape=(1, 112, 112, 6, 6)"""
         LEN_j= self.KERNEL_SIZE**2
 
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
@@ -649,14 +665,17 @@ class KirchhoffPD:
         dist_matrix = self.calc_dist_matrix()  # (6, 6, 49) -> (1, 1, 1, 6, 6, 49)
         weight = self.weight_func_w() # (49) ->                (1, 1, 1, 1, 1, 49)
 
+        # integration part
         shape_matrix = \
             tf.reduce_sum(
-                    shape_mask[:, :, :, tf.newaxis, tf.newaxis, :]* \
-                    smooth_fac_kernel[:, :, :, tf.newaxis, tf.newaxis, :]*\
+                    shape_mask[:, :, :, tf.newaxis, tf.newaxis, :] * \
+                    smooth_fac_kernel[:, :, :, tf.newaxis, tf.newaxis, :] * \
                     weight[tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, :] * \
                     dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :] * \
                     vol \
-                , axis=5, keepdims=True)
+                , axis=5, keepdims=False)
+
+        return shape_matrix
 
         # print(shape_matrix.shape)
         # print(shape_mask[:, :, :, tf.newaxis, tf.newaxis, :])
@@ -729,7 +748,7 @@ class KirchhoffPD:
                     [0, 0, 0, 2, 0, 0], 
                     [0, 0, 0, 0, 2, 0], 
                     [0, 0, 0, 0, 0, 1], 
-                ])
+                ], dtype=tf.float32)
         return coeff_b # shape = (6, 6)
 
 
@@ -1070,9 +1089,12 @@ if __name__ == '__main__':
 
     
 
-    # kirchhoff_PD.PDDO_2D()
+    kirchhoff_PD.PDDO_2D()
+
+    # print(kirchhoff_PD.calc_shape_matrix().shape)
+
     # kirchhoff_PD.calc_dist_matrix()
-    kirchhoff_PD.calc_shape_matrix()
+    # print(kirchhoff_PD.calc_shape_matrix().shape)
     # print(kirchhoff_PD.family_shape_mask().shape)
     # plt.imshow(tf.reshape(kirchhoff_PD.family_shape_mask()[0, 0, 0, :], shape=(7,7)))
     # plt.show()

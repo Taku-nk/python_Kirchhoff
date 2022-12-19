@@ -10,7 +10,6 @@ from time import time
 
 
 
-
 class KirchhoffPD:
     def __init__(self, material, plate_config, sim_config, load_config, bc_config):
         self.material = material
@@ -764,8 +763,6 @@ class KirchhoffPD:
 
 if __name__ == '__main__':
 
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
     from matplotlib import pyplot as plt 
     import numpy as np
 
@@ -785,9 +782,7 @@ if __name__ == '__main__':
             # horizon = 0.01*3
             # horizon = 0.01*3.606
             # horizon = 0.01*4.606
-            # horizon = 0.01*5.606
             horizon = 0.01*6.606
-            # horizon = 0.01*7.606
             )
 
     # plate.summary()
@@ -795,7 +790,7 @@ if __name__ == '__main__':
 
     sim_conf = SimConfig(
             dt = 1,
-            total_steps = 100,
+            total_steps = 1000,
             output_every_xx_steps = 1000
             )
 

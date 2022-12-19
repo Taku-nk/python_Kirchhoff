@@ -1,0 +1,28 @@
+import numpy as np
+
+import matplotlib.pyplot as plt
+
+
+fig = plt.figure(figsize=(4, 8))
+ax1 = fig.add_subplot(211)
+ax2 = fig.add_subplot(212)
+
+
+
+disp_history = np.load("./output/disp_z_history.npy")
+time_history = np.load("./output/time_history.npy")
+
+print(f"disp_history.shape = {disp_history.shape}")
+print(f"time_history.shape = {time_history.shape}")
+
+ax1.imshow(disp_history[-1, :, :])
+
+# center coord history
+# ax2.plot(time_history, disp_history[:, disp_history.shape[1]//2, disp_history.shape[2]//2])
+
+
+# center line disp
+# ax2.plot(time_history, disp_history[:, disp_history.shape[1]//2, disp_history.shape[2]//2])
+
+plt.show()
+

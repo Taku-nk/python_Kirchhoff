@@ -569,11 +569,16 @@ class KirchhoffPD:
         PI = tf.constant(np.pi                         , dtype='float32')
         LEN_j= self.KERNEL_SIZE**2
 
+        row_num = self.plate_config.row_num
+        col_num = self.plate_config.col_num
+
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
     
         # smooth factor for j
         smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
-        smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j))
+        smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j, 1, 1))
+
+        family_shape_mask = tf.reshape(self.family_shape_mask(), shape=(1, row_num, col_num, LEN_j, 1, 1))
 
 
         # dist^2 for j
@@ -590,6 +595,8 @@ class KirchhoffPD:
         angle_kernel = tf.constant(self.calc_angle()[np.newaxis, :, :, np.newaxis] , dtype='float32')
         angle_kernel = tf.reshape(angle_kernel, shape=(1, 1, 1, LEN_j))
 
+
+        weight = tf.reshape(self.weight_func_w(), shape=(1, 1, 1, LEN_j, 1, 1)) # (49) -> (1, 1, 1, 49, 1, 1)
         ########################################################################
         ########################################################################
 
@@ -608,6 +615,7 @@ class KirchhoffPD:
                         strides=[1, 1, 1, 1],
                         rates=[1, 1, 1, 1],
                         padding='SAME')  # shape=(1, 112, 112, 49)
+        f_kj = tf.reshape(f_kj, shape=(1, row_num, col_num, LEN_j, 1, 1))
 
 
         shape_matrix = self.calc_shape_matrix() #shape == (1, 112, 112, 6, 6)
@@ -624,20 +632,71 @@ class KirchhoffPD:
 
 
         # unknown coefficients a to be solved
+        # shape=(1, 112, 112, 6, 6)
         unknown_coeff_a = tf.linalg.inv(shape_matrix) @ known_coeff_b
 
-        print(unknown_coeff_a.shape)
+
+        a_kj = tf.image.extract_patches(
+                tf.reshape(unknown_coeff_a, shape=(1, row_num, col_num, 36)),
+                sizes=[1, self.KERNEL_SIZE, self.KERNEL_SIZE, 1], 
+                strides=[1, 1, 1, 1],
+                rates=[1, 1, 1, 1],
+                padding='SAME')  # shape=(1, 112, 112, 49*36)
+        # shape=(1, 112, 112, 49, 6, 6)
+        a_kj = tf.reshape(a_kj, shape=(1, row_num, col_num, LEN_j, 6, 6))
+
+
+        xi_vec_kj = tf.concat(
+                [
+                     tf.ones_like(xi_x_kernel),
+                     xi_x_kernel,
+                     xi_y_kernel,
+                     tf.math.pow(xi_x_kernel, 2),
+                     tf.math.pow(xi_y_kernel, 2),
+                     xi_x_kernel * xi_y_kernel
+                ], 
+                axis=-1) # shape=(1, 1, 1, 49*6)
+        # shape=(1, 1, 1, 49, 6, 1)
+        xi_vec_kj = tf.reshape(xi_vec_kj, shape=(1, 1, 1, LEN_j, 6, 1))
+
+        # shape = (1, 112, 112, 6, 1)
+        f_deriv = tf.reduce_sum(
+                f_kj * \
+                a_kj @ xi_vec_kj * weight * vol * \
+                smooth_fac_kernel * family_shape_mask \
+                , axis=3, keepdims=False)        
+        # shape = (1, 112, 112, 6)
+        f_deriv = tf.reshape(f_deriv, shape=(1, row_num, col_num, 6))
+
+
+        # print()
+        # TODO check result
+        # im = plt.imshow(f_deriv[0, :, :, 2])
+        # im = plt.imshow(f_deriv[0, :, :, 0])
+
+        # im = plt.imshow(family_shape_mask)
+        # im = plt.imshow(tf.reshape(tf.reduce_sum(family_shape_mask, axis=3), shape=(row_num, col_num, 1) ))
+
+        # lim = 40
+        # plt.clim(vmin=-lim, vmax=lim)
+        # plt.clim(vmin=0, vmax=49)
+        # plt.colorbar(im)
+        # plt.show()
+
+        # g_kj = tf.image.extract_patches(
+        #         unknown_coeff_a @ 
+        #         )
+
+
+
         # print(known_coeff_b.shape)
         # print(tf.linalg.inv(shape_matrix).shape)
-
 
 
         # print(f_kj.shape)
         # plt.imshow(tf.reshape(smooth_fac_kernel, shape=(7,7,1)))
         # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
-        # plt.imshow(f)
 
-        plt.show()
 
         # psi1 = tf.reduce_sum(
         #        (f_kj -
@@ -677,7 +736,7 @@ class KirchhoffPD:
 
         return shape_matrix
 
-        # print(shape_matrix.shape)
+    # print(shape_matrix.shape)
         # print(shape_mask[:, :, :, tf.newaxis, tf.newaxis, :])
         # print(dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :].shape)
         # return shape_matrix
@@ -700,7 +759,7 @@ class KirchhoffPD:
         # plt.imshow(tf.reshape(weight, shape=(7,7)))
         # plt.show()
 
-        return tf.reshape(weight, shape=(LEN_j)) # shape = kind(7, 7)
+        return tf.reshape(weight, shape=(LEN_j)) # shape = kind(7^2)
 
 
     def calc_dist_matrix(self):

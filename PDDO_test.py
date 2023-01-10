@@ -606,6 +606,7 @@ class KirchhoffPD:
 
         # functions to analyze (dummy)
         f = x**2 + y**2
+        # f = x * y
 
 
 
@@ -646,7 +647,7 @@ class KirchhoffPD:
         a_kj = tf.reshape(a_kj, shape=(1, row_num, col_num, LEN_j, 6, 6))
 
 
-        xi_vec_kj = tf.concat(
+        xi_vec_kj = tf.stack(
                 [
                      tf.ones_like(xi_x_kernel),
                      xi_x_kernel,
@@ -655,7 +656,7 @@ class KirchhoffPD:
                      tf.math.pow(xi_y_kernel, 2),
                      xi_x_kernel * xi_y_kernel
                 ], 
-                axis=-1) # shape=(1, 1, 1, 49*6)
+                axis=-1) # shape=(1, 1, 1, 49, 6)
         # shape=(1, 1, 1, 49, 6, 1)
         xi_vec_kj = tf.reshape(xi_vec_kj, shape=(1, 1, 1, LEN_j, 6, 1))
 
@@ -672,20 +673,49 @@ class KirchhoffPD:
         # print()
         # TODO check result
         # im = plt.imshow(f_deriv[0, :, :, 2])
-        # im = plt.imshow(f_deriv[0, :, :, 0])
 
         # im = plt.imshow(family_shape_mask)
         # im = plt.imshow(tf.reshape(tf.reduce_sum(family_shape_mask, axis=3), shape=(row_num, col_num, 1) ))
 
-        # lim = 40
-        # plt.clim(vmin=-lim, vmax=lim)
-        # plt.clim(vmin=0, vmax=49)
-        # plt.colorbar(im)
-        # plt.show()
+
+
+        # lim = 1000
+        # lim = 10
+        lim = 0.5
+
+        # for i in range(6):
+        #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[ 0,  0, i]))
+        #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[-1,  0, i]))
+        #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[ 0, -1, i]))
+        #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[-1, -1, i]))
+        #     print()
+            
+
+        # for i in range(6):
+        #     for j in range(6):
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[ 0,  0, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[-1,  0, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[ 0, -1, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[-1, -1, i, j]))
+        #         print()
+
+        # im = plt.imshow(f[12:-12, 12:-12])
+        im = plt.imshow(f_deriv[0, 12:-12, 12:-12, 5])
+        # print(f_deriv[0, 12:-12, 12:-12, 0].shape)
+        # im = plt.imshow(f_deriv[0, 20:-21, 20:-21, 0])
+        # plt.clim(vmin=-lim, vmax =lim)
+        # plt.plot(self.init_coord[row_num//2, :, 0], f_deriv[0, row_num//2, :, 0])
+        # print(self.init_coord[row_num/2, :, 0].shape)
+
+
+        # im = plt.imshow(tf.reshape(xi_vec_kj, (7, 7, 6))[:, :, 5])
+        plt.colorbar(im)
+        plt.show()
 
         # g_kj = tf.image.extract_patches(
         #         unknown_coeff_a @ 
         #         )
+        # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
 
 
 
@@ -695,7 +725,6 @@ class KirchhoffPD:
 
         # print(f_kj.shape)
         # plt.imshow(tf.reshape(smooth_fac_kernel, shape=(7,7,1)))
-        # plt.imshow(tf.reshape(f_kj[0, 0, 0, :], shape=(7, 7, 1)))
 
 
         # psi1 = tf.reduce_sum(
@@ -783,6 +812,7 @@ class KirchhoffPD:
         xi_y = tf.reshape(tf.constant(hor_coord_kernel[:, 1], dtype='float32'), shape=(LEN_j))
 
 
+
         dist_matrix = tf.Variable(
                 [[tf.ones(LEN_j), xi_x        , xi_y        , xi_x**2        , xi_y**2        , xi_x*xi_y],
                  [xi_x          , xi_x**2     , xi_x*xi_y   , xi_x**3        , xi_x*xi_y**2   , xi_x**2*xi_y],
@@ -814,7 +844,7 @@ class KirchhoffPD:
 
     def family_shape_mask(self):
         """
-            this returns family shape mask based on plage shape.
+            this returns family shape mask based on plate shape.
             shape=(1, 112, 112, 49) 
             if MP exists then 1, otherwise 0.
         """
@@ -1072,7 +1102,8 @@ if __name__ == '__main__':
             nu= 0.3)
 
     # mat.summary()
-    dx = 0.01
+    dx = 0.02
+    # dx = 0.01
     thickness = 0.01
     horizon = dx * 3.75
 

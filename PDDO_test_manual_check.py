@@ -605,9 +605,8 @@ class KirchhoffPD:
         y = self.init_coord[:, :, 1]
 
         # functions to analyze (dummy)
-        # f = (x+1)**2 + (y+1)**2
-        # f = tf.ones_like(x)
-        f = x*y
+        f = (x+1)**2 + (y+1)**2
+        # f = x**3 + y**3
 
 
 
@@ -675,13 +674,14 @@ class KirchhoffPD:
         # TODO check result
         # im = plt.imshow(f_deriv[0, :, :, 2])
 
+        # im = plt.imshow(family_shape_mask)
         # im = plt.imshow(tf.reshape(tf.reduce_sum(family_shape_mask, axis=3), shape=(row_num, col_num, 1) ))
-        # im = plt.imshow(tf.reshape(family_shape_mask[0, 0, 111, :, 0, 0], shape=(7, 7, 1) ))
 
 
 
         # lim = 1000
         # lim = 10
+        lim = 0.5
 
         # for i in range(6):
         #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[ 0,  0, i]))
@@ -691,33 +691,28 @@ class KirchhoffPD:
         #     print()
             
 
+        # for i in range(6):
+        #     for j in range(6):
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[ 0,  0, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[-1,  0, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[ 0, -1, i, j]))
+        #         # print("{:11.4e}".format(tf.reduce_sum(tf.reshape(a_kj, (112, 112, 49, 6, 6)), axis=2)[-1, -1, i, j]))
+        #         print()
 
         # im = plt.imshow(f[12:-12, 12:-12])
 
-        lim = 5
-        # im = plt.imshow(f_deriv[0, 6:-6, 6:-6, 0])
-        # im = plt.imshow(f[6:-6, 6:-6])
+        im = plt.imshow(f_deriv[0, 6:-6, 6:-6, 2])
 
         # plt.plot(self.init_coord[row_num//2, :, 0], f_deriv[0, row_num//2, :, 2])
         # print(f_deriv[0, 12:-12, 12:-12, 0].shape)
         # im = plt.imshow(f_deriv[0, 20:-21, 20:-21, 0])
+        # plt.clim(vmin=-lim, vmax =lim)
         # print(self.init_coord[row_num/2, :, 0].shape)
 
 
         # im = plt.imshow(tf.reshape(xi_vec_kj, (7, 7, 6))[:, :, 5])
-
-        
-        # im = plt.imshow(f_deriv[0, :, :, 0])
-        # print(smooth_fac_kernel.shape)
-        # im = plt.imshow(smooth_fac_kernel)
-        # im = plt.imshow(f)
-        # im = plt.imshow(tf.reshape(smooth_fac_kernel, (7,7)))
-        # plt.clim(vmin=-lim, vmax =lim)
-
-        # plt.colorbar(im)
-        # plt.show()
-
-        
+        plt.colorbar(im)
+        plt.show()
 
         # g_kj = tf.image.extract_patches(
         #         unknown_coeff_a @ 
@@ -759,7 +754,6 @@ class KirchhoffPD:
 
         dist_matrix = self.calc_dist_matrix()  # (6, 6, 49) -> (1, 1, 1, 6, 6, 49)
         weight = self.weight_func_w() # (49) ->                (1, 1, 1, 1, 1, 49)
-        
 
         # integration part
         shape_matrix = \
@@ -770,15 +764,6 @@ class KirchhoffPD:
                     dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :] * \
                     vol \
                 , axis=5, keepdims=False)
-
-        # print(shape_matrix.shape)
-        # plt.imshow(tf.reshape(shape_matrix[0, 0, 0, 0, 0, :], (7,7)))
-        # plt.show()
-
-        # print("shape_mask.shape={}".format(shape_mask[:, :, :, tf.newaxis, tf.newaxis, :].shape))
-        # print("smooth_fac_kernel={}".format(smooth_fac_kernel[:, :, :, tf.newaxis, tf.newaxis, :].shape ))
-        # print("weigh.shape = {}".format(weight[tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, tf.newaxis, :].shape ))
-        # print("dist_matrix{}".format(dist_matrix[tf.newaxis, tf.newaxis, tf.newaxis, :, :, :].shape ))
 
         return shape_matrix
 
@@ -953,9 +938,7 @@ class KirchhoffPD:
         factor = np.zeros_like(dist_kernel)
         factor[dist_kernel < horizon + dx/2.0] = (horizon + dx/2.0 - dist_kernel[dist_kernel < horizon + dx/2.0]) / dx
         factor[dist_kernel < horizon - dx/2.0] = 1.0
-
         factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
-        # factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 1
 
 
         vol_cor_fac = (thick * horizon**2 * np.pi) / np.sum(vol * factor)
@@ -1199,22 +1182,4 @@ if __name__ == '__main__':
     
 
     kirchhoff_PD.PDDO_2D()
-
-    # print(kirchhoff_PD.calc_shape_matrix().shape)
-
-    # kirchhoff_PD.calc_dist_matrix()
-    # print(kirchhoff_PD.calc_shape_matrix().shape)
-    # print(kirchhoff_PD.family_shape_mask().shape)
-    # plt.imshow(tf.reshape(kirchhoff_PD.family_shape_mask()[0, 0, 0, :], shape=(7,7)))
-    # plt.show()
-    # print(tf.reshape(kirchhoff_PD.family_shape_mask()[0, 0, 0, :], shape=(7,7)))
-    # print(kirchhoff_PD.weight_func_w(shape=(7,7)).shape)
-
-    
-    # kirchhoff_PD.run_static(safety_factor=0.3, output_dir="output")
-    
-
-
-
-
 

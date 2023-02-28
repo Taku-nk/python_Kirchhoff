@@ -48,6 +48,28 @@ class PlateConfig:
         print()
 
 
+    def GetInitCoord(self):
+        """ Get initial coordinate x, y, z in the form of meshgrid (112, 112, 3)"""
+        dx = self.dx
+        nrow = self.row_num  # for y num
+        ncol = self.col_num  # for x num
+
+        x_start = -dx * (ncol - 1) / 2.0
+        y_start = -dx * (nrow - 1) / 2.0
+
+        x_stop =   dx * (ncol - 1) / 2.0
+        y_stop =   dx * (nrow - 1) / 2.0
+
+
+
+        # X,Y = np.mgrid[x_start : x_stop+dx, y_start : y_stop+dx]
+        X, Y = np.meshgrid(np.linspace(x_start, x_stop, ncol), np.linspace(y_start, y_stop, nrow))
+        Z = np.zeros_like(X)
+        return np.concatenate((X[:, :, np.newaxis],
+                               Y[:, :, np.newaxis],
+                               Z[:, :, np.newaxis]), axis= -1)
+
+
 
 class SimConfig:
     def __init__(self, dt, total_steps=100, output_every_xx_steps=10):
@@ -116,8 +138,15 @@ class BCConfig:
         # self.disp_BC_list = []
 
         # slicer list for Kirchhoff BC
-        self.Kirchhoff_BC_clamp_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer3), ...]
-        self.Kirchhoff_BC_simply_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer3), ...]
+        self.Kirchhoff_BC_clamp_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
+        self.Kirchhoff_BC_simply_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
+        
+        # free boundary for edge on x positive (right side of the edge)
+        self.Kirchhoff_BC_free_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
+
+        # self.Kirchhoff_BC_free_x_n_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
+        # self.Kirchhoff_BC_free_y_p_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
+        # self.Kirchhoff_BC_free_y_n_list = [] # [(fict slicer1, source slicer1), (fict slicer2, source_slicer2), ...]
         
 
     # def add_dispBC(self, mask, value=np.zeros_like(self.)):
@@ -166,26 +195,39 @@ class BCConfig:
             Arguments:
                 fict_slicer: np.s_[] (slicer object), fictitious node ID slicer
                 source_slicer : np.s_[] (slicer object), source node ID (correcponding to fict node)
-                BC_type : str, 'clamped', 'simply' , default is 'clamped'
+                BC_type : str, 'clamped', 'simply' 'free' default is 'clamped', 
+                BC_type 'free' only supports x line or y line, no curve are allowed
         """
         if BC_type == 'clamped':
             self.Kirchhoff_BC_clamp_list.append((fict_slicer, source_slicer))
         elif BC_type == 'simply':
             self.Kirchhoff_BC_simply_list.append((fict_slicer, source_slicer))
+        elif BC_type == 'free':
+            # fict slicer slices fictitous nodes, and source_slicer slices one row or column of nodes 
+            self.Kirchhoff_BC_free_list.append((fict_slicer, source_slicer))
         else:
-            print(f"there is no BC_type = {BC_type}")
+            raise KeyError(f"there is no BC_type = '{BC_type}'")
+            # print(f"there is no BC_type = {BC_type}")
 
         
     def plot_Kirchhoff_BC(self):
+        """ 
+            Plot Kirchhoff specific BC. The number e.g. 1, 2 is just a number
+            to plot color in matplotlib.pyplot.imshow.
+        """
         Kir_BC_image = np.zeros((self.plate.row_num, self.plate.col_num))
 
         for fict_slicer, source_slicer in self.Kirchhoff_BC_clamp_list:
-            Kir_BC_image[fict_slicer] = 2
-            Kir_BC_image[source_slicer] = 1
+            Kir_BC_image[fict_slicer] = 1
+            Kir_BC_image[source_slicer] = 2
             
         for fict_slicer, source_slicer in self.Kirchhoff_BC_simply_list:
-            Kir_BC_image[fict_slicer] = 2
-            Kir_BC_image[source_slicer] = 1
+            Kir_BC_image[fict_slicer] = 1
+            Kir_BC_image[source_slicer] = 3
+
+        for fict_slicer, source_slicer in self.Kirchhoff_BC_free_list:
+            Kir_BC_image[fict_slicer] = 1
+            Kir_BC_image[source_slicer] = 4
         # fig, (ax_fict, ax_source) = plt.subplots(1, 2, figsize=(12,6))
         # 0-> no Kir BC, 1->clamp_fict, 2-> clamped_source
 
@@ -195,9 +237,10 @@ class BCConfig:
         ax.set_title("Kirchhoff_BC")
         ax.grid(ls=':')
 
-        ax.imshow(Kir_BC_image, cmap='copper')
+        im = ax.imshow(Kir_BC_image, cmap='turbo')
+        im.set_clim(0.0, 10.0)
+        # plt.colorbar(im)
         plt.show()
-
 
 
 if __name__=='__main__':
@@ -249,9 +292,12 @@ if __name__=='__main__':
     bc_conf.plot_dispBC()
 
     # np.s_[:, 12:7:-1] <- if you want ::-1 then you also have to flip 7&12
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 95:100], source_slicer=np.s_[:, 92:87:-1], BC_type='simply' )
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[0:5, :], source_slicer=np.s_[11:6:-1, :],     BC_type='simply' )
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 95:100], source_slicer=np.s_[:, 92:87:-1], BC_type='free_x+' )
+    # Free edged boundary はsourceとして1列もしくは1行あれば問題ない
+    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='clamped' )
+    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 95:100], source_slicer=np.s_[:, 92:91:-1], BC_type='free' ) 
+    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[0:5, :], source_slicer=np.s_[11:6:-1, :],     BC_type='clamped' )
     bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[95:100, :], source_slicer=np.s_[92:87:-1, :], BC_type='simply' )
 
     bc_conf.plot_Kirchhoff_BC()

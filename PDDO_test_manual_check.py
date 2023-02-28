@@ -575,7 +575,7 @@ class KirchhoffPD:
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
     
         # smooth factor for j
-        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac_for_PDDO()[np.newaxis, :, :], dtype='float32')
         smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j, 1, 1))
 
         family_shape_mask = tf.reshape(self.family_shape_mask(), shape=(1, row_num, col_num, LEN_j, 1, 1))
@@ -618,9 +618,12 @@ class KirchhoffPD:
                         padding='SAME')  # shape=(1, 112, 112, 49)
         f_kj = tf.reshape(f_kj, shape=(1, row_num, col_num, LEN_j, 1, 1))
 
+        # print(f_kj.shape)
+        
+
 
         shape_matrix = self.calc_shape_matrix() #shape == (1, 112, 112, 6, 6)
-        # print(shape_matrix.shape)
+
 
         # shape == (6, 6) -> (1, 112, 112, 6, 6)
 
@@ -681,7 +684,7 @@ class KirchhoffPD:
 
         # lim = 1000
         # lim = 10
-        lim = 0.5
+        # lim = 0.5
 
         # for i in range(6):
         #     print("{:11.4e}".format(tf.reshape(f_deriv, (112, 112, 6))[ 0,  0, i]))
@@ -701,7 +704,7 @@ class KirchhoffPD:
 
         # im = plt.imshow(f[12:-12, 12:-12])
 
-        im = plt.imshow(f_deriv[0, 6:-6, 6:-6, 2])
+        # im = plt.imshow(f[1:-1, 1:-1])
 
         # plt.plot(self.init_coord[row_num//2, :, 0], f_deriv[0, row_num//2, :, 2])
         # print(f_deriv[0, 12:-12, 12:-12, 0].shape)
@@ -709,10 +712,12 @@ class KirchhoffPD:
         # plt.clim(vmin=-lim, vmax =lim)
         # print(self.init_coord[row_num/2, :, 0].shape)
 
+        # im = plt.imshow(f_deriv[0, 4:-4, 4:-4, 0])
+        # im = plt.imshow(f_deriv[0, :, :, 0])
 
         # im = plt.imshow(tf.reshape(xi_vec_kj, (7, 7, 6))[:, :, 5])
-        plt.colorbar(im)
-        plt.show()
+        # plt.colorbar(im)
+        # plt.show()
 
         # g_kj = tf.image.extract_patches(
         #         unknown_coeff_a @ 
@@ -745,7 +750,7 @@ class KirchhoffPD:
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
     
         # smooth factor for j
-        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac_for_PDDO()[np.newaxis, :, :], dtype='float32')
         smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j))# shape[1, 1, 1, 49]-> (1, 1, 1, 1, 1, 49)
 
 
@@ -876,7 +881,8 @@ class KirchhoffPD:
         # pass
 
     def calc_kernel_size(self):
-        return int(self.plate_config.horizon / self.plate_config.dx) * 2 + 1
+        return 5
+        # return int(self.plate_config.horizon / self.plate_config.dx) * 2 + 1
         # return (self.plate_config.horizon // self.plate_config.dx) * 2 + 1
 
     
@@ -944,6 +950,46 @@ class KirchhoffPD:
         vol_cor_fac = (thick * horizon**2 * np.pi) / np.sum(vol * factor)
 
 
+        
+        # print(dist_kernel < horizon - dx/2.0)
+
+        # return factor
+        return factor * vol_cor_fac
+        # return factor 
+
+
+    def calc_dist_smooth_fac_for_PDDO(self):
+        """
+            volume correction factor and mask based on the distance between two node
+            returns: 7 x 7 KERNEL factor
+            volume correction factor and circular mask and center value is zero, so
+            it can be used to exclude center material point in loop
+
+        """
+
+        dx = self.plate_config.dx
+        horizon = self.plate_config.horizon
+
+        vol = self.plate_config.vol
+        thick  = self.plate_config.thickness
+
+
+
+
+        dist_kernel = np.sqrt(self.calc_dist_pow2())
+
+        factor = np.zeros_like(dist_kernel)
+        factor[dist_kernel < horizon + dx/2.0] = (horizon + dx/2.0 - dist_kernel[dist_kernel < horizon + dx/2.0]) / dx
+        factor[dist_kernel < horizon - dx/2.0] = 1.0
+        # factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
+
+
+        vol_cor_fac = (thick * horizon**2 * np.pi) / np.sum(vol * factor)
+
+        # plt.imshow(np.reshape(factor, (5,5)))
+        # plt.show()
+        print(factor)
+        # print()
         
         # print(dist_kernel < horizon - dx/2.0)
 
@@ -1104,15 +1150,15 @@ if __name__ == '__main__':
             nu= 0.3)
 
     # mat.summary()
-    dx = 0.02
+    dx = 0.1
     # dx = 0.01
     thickness = 0.01
     horizon = dx * 3.75
 
 
     plate = PlateConfig(
-            row_num = 112, # y num
-            col_num = 112, # x num
+            row_num = 29, # y num
+            col_num = 29, # x num
             thickness = thickness,
             dx = dx,
             horizon = horizon
@@ -1138,12 +1184,12 @@ if __name__ == '__main__':
     
 
     load = LoadConfig(plate)
-    body_load = np.zeros_like(load.get_body_force())
-    body_load[:, 55:57] = -5.0e5 # [N/m^3]
+    # body_load = np.zeros_like(load.get_body_force())
+    # body_load[:, 55:57] = -5.0e5 # [N/m^3]
     # load.add_body_force(bforce_z=body_load)
     # pressure = np.zeros_like(load.get_body_force())
     # pressure[6:94, 6:94] = 1
-    load.add_pressure(sforce_z=-1)
+    # load.add_pressure(sforce_z=-1)
     # load.add_pressure(sforce_z=pressure)
     
 
@@ -1157,10 +1203,11 @@ if __name__ == '__main__':
     # bc_conf.add_dispBC(np.s_[:, -7:-5], disp_z=0)
 
     # np.s_[:, 12:7:-1] <- if you want ::-1 then you also have to flip 7&12
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, -1:-6:-1], source_slicer=np.s_[:, -12:-7], BC_type='simply' )
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[0:5, :], source_slicer=np.s_[11:6:-1, :],     BC_type='simply' )
-    bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[-1:-6:-1, :], source_slicer=np.s_[-12:-7, :], BC_type='simply' )
+    
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, 0:5], source_slicer=np.s_[:, 11:6:-1],     BC_type='simply' )
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[:, -1:-6:-1], source_slicer=np.s_[:, -12:-7], BC_type='simply' )
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[0:5, :], source_slicer=np.s_[11:6:-1, :],     BC_type='simply' )
+    # bc_conf.add_Kirchhoff_BC(fict_slicer=np.s_[-1:-6:-1, :], source_slicer=np.s_[-12:-7, :], BC_type='simply' )
 
 
     kirchhoff_PD = KirchhoffPD(mat, plate, sim_conf, load, bc_conf)

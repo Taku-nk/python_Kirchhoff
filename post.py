@@ -75,6 +75,20 @@ class PlotFigure:
         plt.colorbar(sc, shrink=0.8, pad=0.15)
         # plt.show()
 
+    def plot_contour(self, ax, cmap='viridis_r'):
+        """ Plot 2D contour """
+        xs = self.init_coord[:, :, 0]
+        ys = self.init_coord[:, :, 1]
+        zs = self.disp_history[self.time_step_idx, :, :]
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        cs = ax.contourf(xs, ys, zs, cmap=cmap)
+        ax.axis("scaled")
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        plt.colorbar(cs, cax=cax)
+
 
     def plot_2D(self, ax, cmap='viridis_r'):
         """ Plot imshow data """
@@ -107,7 +121,8 @@ class PlotFigure:
         """ Plot everything in one figure and show """
         self.plot_history(self.ax0)
         self.plot_3D(self.ax3)
-        self.plot_2D(self.ax2, cmap=cmap)
+        # self.plot_2D(self.ax2, cmap=cmap)
+        self.plot_contour(self.ax2)
         self.plot_center_row(self.ax1, save=save_center)
 
         self.fig.suptitle("Result at timestep {}".format(self.time_history[self.time_step_idx]))

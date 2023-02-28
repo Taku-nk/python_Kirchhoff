@@ -1053,18 +1053,6 @@ class KirchhoffPD:
 
     def apply_kirchhoff_BC(self):
         """ apply kirchhoff Boundary condition. mirror or symmetry"""
-        # Clamped supported BC
-        # np_disp = np.array(self.disp_z) 
-        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_clamp_list:
-            np_disp = np.array(self.disp_z)
-            np_disp[fict_slicer] = np_disp[source_slicer]
-            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
-
-        # Simply supported BC
-        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_simply_list:
-            np_disp = np.array(self.disp_z)
-            np_disp[fict_slicer] = -np_disp[source_slicer]
-            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
 
         # Get numpy form of slope x, slope y
         disp_z_slope_x, disp_z_slope_y = self._calc_disp_slope()
@@ -1079,6 +1067,18 @@ class KirchhoffPD:
             self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
 
 
+        # Clamped supported BC
+        # np_disp = np.array(self.disp_z) 
+        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_clamp_list:
+            np_disp = np.array(self.disp_z)
+            np_disp[fict_slicer] = np_disp[source_slicer]
+            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
+
+        # Simply supported BC
+        for fict_slicer, source_slicer in self.bc_config.Kirchhoff_BC_simply_list:
+            np_disp = np.array(self.disp_z)
+            np_disp[fict_slicer] = -np_disp[source_slicer]
+            self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
 
 
     def _calc_fict_disp(self, np_disp, fict_slicer, source_slicer, slope_x, slope_y):
@@ -1095,12 +1095,14 @@ class KirchhoffPD:
             Returns:
                 - new_fict_disp, np.array, shape == (112, 6)
         """
+        fac = 1 # This factor is for reducing the slope.
+
         x = np.array(self.init_coord[:, :, 0])
         y = np.array(self.init_coord[:, :, 1])
 
         source_disp_z = np_disp[source_slicer]
-        source_slope_x = slope_x[source_slicer] # (112, 1)
-        source_slope_y = slope_y[source_slicer]
+        source_slope_x = slope_x[source_slicer]  * fac   # (112, 1)
+        source_slope_y = slope_y[source_slicer]  * fac  
 
         fict_delta_x = x[fict_slicer] - x[source_slicer] # (112, 6)
         fict_delta_y = y[fict_slicer] - y[source_slicer] # (112, 6)

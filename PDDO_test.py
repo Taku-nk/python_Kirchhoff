@@ -575,7 +575,8 @@ class KirchhoffPD:
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
     
         # smooth factor for j
-        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        # smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac_for_PDDO()[np.newaxis, :, :], dtype='float32')
         smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j, 1, 1))
 
         family_shape_mask = tf.reshape(self.family_shape_mask(), shape=(1, row_num, col_num, LEN_j, 1, 1))
@@ -605,9 +606,9 @@ class KirchhoffPD:
         y = self.init_coord[:, :, 1]
 
         # functions to analyze (dummy)
-        # f = (x+1)**2 + (y+1)**2
+        f = (x+1)**2 + (y+1)**2
         # f = tf.ones_like(x)
-        f = x*y
+        # f = x*y
 
 
 
@@ -694,8 +695,7 @@ class KirchhoffPD:
 
         # im = plt.imshow(f[12:-12, 12:-12])
 
-        lim = 5
-        # im = plt.imshow(f_deriv[0, 6:-6, 6:-6, 0])
+        lim = 1
         # im = plt.imshow(f[6:-6, 6:-6])
 
         # plt.plot(self.init_coord[row_num//2, :, 0], f_deriv[0, row_num//2, :, 2])
@@ -708,14 +708,18 @@ class KirchhoffPD:
 
         
         # im = plt.imshow(f_deriv[0, :, :, 0])
+        im = plt.imshow(f_deriv[0, 6:-6, 6:-6, 2])
+        # print(x[6,6])
+
         # print(smooth_fac_kernel.shape)
         # im = plt.imshow(smooth_fac_kernel)
         # im = plt.imshow(f)
         # im = plt.imshow(tf.reshape(smooth_fac_kernel, (7,7)))
+
         # plt.clim(vmin=-lim, vmax =lim)
 
-        # plt.colorbar(im)
-        # plt.show()
+        plt.colorbar(im)
+        plt.show()
 
         
 
@@ -750,7 +754,7 @@ class KirchhoffPD:
         vol = tf.constant(self.plate_config.vol        , dtype='float32') #scalar
     
         # smooth factor for j
-        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac()[np.newaxis, :, :], dtype='float32')
+        smooth_fac_kernel = tf.constant(self.calc_dist_smooth_fac_for_PDDO()[np.newaxis, :, :], dtype='float32')
         smooth_fac_kernel = tf.reshape(smooth_fac_kernel, shape=(1, 1, 1, LEN_j))# shape[1, 1, 1, 49]-> (1, 1, 1, 1, 1, 49)
 
 
@@ -968,6 +972,42 @@ class KirchhoffPD:
         return factor * vol_cor_fac
         # return factor 
 
+    def calc_dist_smooth_fac_for_PDDO(self):
+        """
+            volume correction factor and mask based on the distance between two node
+            returns: 7 x 7 KERNEL factor
+            volume correction factor and circular mask and center value is zero, so
+            it can be used to exclude center material point in loop
+
+        """
+
+        dx = self.plate_config.dx
+        horizon = self.plate_config.horizon
+
+        vol = self.plate_config.vol
+        thick  = self.plate_config.thickness
+
+
+
+
+        dist_kernel = np.sqrt(self.calc_dist_pow2())
+
+        factor = np.zeros_like(dist_kernel)
+        factor[dist_kernel < horizon + dx/2.0] = (horizon + dx/2.0 - dist_kernel[dist_kernel < horizon + dx/2.0]) / dx
+        factor[dist_kernel < horizon - dx/2.0] = 1.0
+
+        # factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 0.0
+        # factor[self.KERNEL_SIZE//2, self.KERNEL_SIZE//2] = 1
+
+
+        # vol_cor_fac = (thick * horizon**2 * np.pi) / np.sum(vol * factor)
+
+
+        
+        # print(dist_kernel < horizon - dx/2.0)
+
+        return factor
+        # return factor * vol_cor_fac
 
 
 

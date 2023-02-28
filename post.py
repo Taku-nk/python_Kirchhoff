@@ -11,11 +11,14 @@ class PlotFigure:
         self.data_dir = data_dir
 
         # self.fig = plt.figure(figsize=(12, 8))
-        self.fig = plt.figure(figsize=(8, 6))
-        self.ax0 = self.fig.add_subplot(221)
-        self.ax1 = self.fig.add_subplot(222)
-        self.ax2 = self.fig.add_subplot(223)
-        self.ax3 = self.fig.add_subplot(224, projection='3d')
+        self.fig = plt.figure(figsize=(12, 6))
+        self.ax0 = self.fig.add_subplot(231)
+        self.ax1 = self.fig.add_subplot(232)
+        self.ax2 = self.fig.add_subplot(236)
+
+        self.ax4 = self.fig.add_subplot(234)
+        self.ax5 = self.fig.add_subplot(235)
+        self.ax3 = self.fig.add_subplot(233, projection='3d')
 
         # self.disp_history = np.load("./output/disp_z_history.npy")
         # self.time_history = np.load("./output/time_history.npy")
@@ -24,6 +27,8 @@ class PlotFigure:
         self.disp_history = np.load(os.path.join(self.data_dir, "disp_z_history.npy"))
         self.time_history = np.load(os.path.join(self.data_dir, "time_history.npy"  ))
         self.init_coord   = np.load(os.path.join(self.data_dir, "init_coord.npy"    ))
+        self.slope_x_history = np.load(os.path.join(self.data_dir, "slope_x_history.npy"    ))
+        self.slope_y_history = np.load(os.path.join(self.data_dir, "slope_y_history.npy"    ))
 
         self.time_step_idx = -1
 
@@ -72,6 +77,10 @@ class PlotFigure:
                    c=color_data, 
                    s=2,
                    cmap=plt.get_cmap('viridis_r'), depthshade=False)
+
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes('right', size='5%', pad=0.05)
+        # plt.colorbar(sc, cax=cax)
         plt.colorbar(sc, shrink=0.8, pad=0.15)
         # plt.show()
 
@@ -89,17 +98,56 @@ class PlotFigure:
         cax = divider.append_axes('right', size='5%', pad=0.05)
         plt.colorbar(cs, cax=cax)
 
+    
+    
 
     def plot_2D(self, ax, cmap='viridis_r'):
         """ Plot imshow data """
-        ax.set_title("2D visualiation")
-        cmap=cmap
+        ax.set_title("2D viz: Displacement")
+        cmap = cmap
         im = ax.imshow(self.disp_history[self.time_step_idx, :, :], cmap=cmap)
 
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='5%', pad=0.05)
         ax.axis("off")
         plt.colorbar(im, cax=cax) 
+
+
+    def plot_2D_slope(self, ax, slope='x', cmap='viridis_r', slope_crop=0):
+        """ 
+            Plot imshow slope x
+            Artuments: 
+                - ax: plt.axis 
+                - slope: str, 'x' or 'y'. Default is 'x'
+                - slope_crop: int, default is 0. Must be > 0.
+                
+
+        """
+        ax.set_title(f"2D viz: slope {slope}")
+        cmap = cmap
+
+        
+        if (slope == 'x') and (slope_crop==0):
+            im = ax.imshow(self.slope_x_history[self.time_step_idx, :, :], cmap=cmap)
+        elif (slope == 'y') and (slope_crop==0):
+            im = ax.imshow(self.slope_y_history[self.time_step_idx, :, :], cmap=cmap)
+        elif (slope == 'x') and (slope_crop>0):
+            im = ax.imshow(self.slope_x_history[self.time_step_idx, slope_crop:-slope_crop, slope_crop:-slope_crop], cmap=cmap)
+        elif (slope == 'y') and (slope_crop>0):
+            im = ax.imshow(self.slope_y_history[self.time_step_idx, slope_crop:-slope_crop, slope_crop:-slope_crop], cmap=cmap)
+        elif slope_crop < 0:
+            print(f"ERROR: Invalid slope_crop value: {slope_crop}, it has to be positive value")
+            raise
+        else:
+            print(f"ERROR: There is no slope name called '{slope}'")
+            raise
+
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        ax.axis("off")
+        plt.colorbar(im, cax=cax) 
+
+
 
     def plot_center_row(self, ax, save=False):
         """ Plot center row (Only center available for now.)"""
@@ -117,15 +165,31 @@ class PlotFigure:
                     init_coord_x[row_mask], self.disp_history[self.time_step_idx, :, :][row_mask],
                     xlabel="x", ylabel="z", file_name="row_x1.csv")
 
-    def plot(self, save_center=False, cmap='viridis_r'):
-        """ Plot everything in one figure and show """
+    def plot(self, save_center=False, cmap='viridis_r', contour=False, slope_crop=0):
+        """ Plot everything in one figure and show 
+            Arguments: 
+                - save_center: bool, if set to True, the center row coordinate 
+                               and displacement result will be saved 
+                - cmap : str, cmap for plt.imshow. Default value is 'viridis_r' 
+                - contour: bool, if set to True, contourf plot will be displayed 
+                            instead of imshow.
+                - slope_crop: int, crop edge fictitious node. Default is 0
+        """
+        self.fig.suptitle("Result at timestep {}".format(self.time_history[self.time_step_idx]))
+
         self.plot_history(self.ax0)
+
         self.plot_3D(self.ax3)
-        # self.plot_2D(self.ax2, cmap=cmap)
-        self.plot_contour(self.ax2)
         self.plot_center_row(self.ax1, save=save_center)
 
-        self.fig.suptitle("Result at timestep {}".format(self.time_history[self.time_step_idx]))
+        self.plot_2D_slope(self.ax4, slope='x', slope_crop=slope_crop)
+        self.plot_2D_slope(self.ax5, slope='y', slope_crop=slope_crop)
+
+
+        if contour == True:
+            self.plot_contour(self.ax2)
+        else:
+            self.plot_2D(self.ax2, cmap=cmap)
 
         plt.tight_layout()
         plt.show()

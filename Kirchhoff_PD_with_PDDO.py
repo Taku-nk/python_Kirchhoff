@@ -33,6 +33,8 @@ class KirchhoffPD:
         self.disp_output_list = []
         self.time_output_list = []
 
+        self.slope_x_output_list = []
+        self.slope_y_output_list = []
 
         # print(self.disp_z)
 
@@ -133,11 +135,15 @@ class KirchhoffPD:
 
         velhalf = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
         velhalf_old = tf.Variable(np.zeros_like(self.disp_z), dtype=tf.float32)
-        # print("pd_forces_old = ", pd_forces_old.shape)
-        # print("disp_z_old.shape = ", disp_z_old.shape)
-        # for step in range(1):
-        # for step in range(self.sim_config.total_steps):
+
+        # Apply initial BC (This is optional but apply for first ouput)
+        self.apply_disp_BC()
+        slope_x, slope_y = self.apply_kirchhoff_BC()
+
+        # Create Output list for step 0
         self.disp_output_list.append(self.disp_z)
+        self.slope_x_output_list.append(slope_x)
+        self.slope_y_output_list.append(slope_y)
         self.time_output_list.append(time)
 
         # for time_step in range(10):
@@ -156,7 +162,7 @@ class KirchhoffPD:
 
 
             self.apply_disp_BC()
-            self.apply_kirchhoff_BC()
+            slope_x, slope_y = self.apply_kirchhoff_BC()
 
 
             print(f"step {time_step} done (time = {time})")
@@ -164,6 +170,10 @@ class KirchhoffPD:
             if ((time_step+1) % (self.sim_config.output_every_xx_steps)) == 0:
                 print(f"output_data, at time = {time}")
                 self.disp_output_list.append(self.disp_z)
+
+                self.slope_x_output_list.append(slope_x)
+                self.slope_y_output_list.append(slope_y)
+
                 self.time_output_list.append(time)
 
                 self.save_numpy_result(output_dir=output_dir)
@@ -173,6 +183,9 @@ class KirchhoffPD:
         disp_history = np.array(self.disp_output_list)
         time_history = np.array(self.time_output_list)
         init_coord = np.array(self.init_coord)
+        
+        slope_x_history = np.array(self.slope_x_output_list)
+        slope_y_history = np.array(self.slope_y_output_list)
 
         # np.savetxt("disp_z_history.csv", disp_history, delimiter=',')
         # np.savetxt("time_history.csv", time_history, delimiter=',')
@@ -181,6 +194,8 @@ class KirchhoffPD:
         np.save(os.path.join(output_dir,'disp_z_history.npy'), disp_history)
         np.save(os.path.join(output_dir,'time_history.npy'), time_history)
         np.save(os.path.join(output_dir,'init_coord.npy'), init_coord)
+        np.save(os.path.join(output_dir,'slope_x_history.npy'), slope_x_history)
+        np.save(os.path.join(output_dir,'slope_y_history.npy'), slope_y_history)
 
         print("saved numpy data at {}".format(os.path.join(os.getcwd(), output_dir)))
 
@@ -1052,7 +1067,8 @@ class KirchhoffPD:
         
 
     def apply_kirchhoff_BC(self):
-        """ apply kirchhoff Boundary condition. mirror or symmetry"""
+        """ apply kirchhoff Boundary condition. mirror or symmetry
+            Returns disp_z slope_x, slope_y (np.array), shape=(112, 112)"""
 
         # Get numpy form of slope x, slope y
         disp_z_slope_x, disp_z_slope_y = self._calc_disp_slope()
@@ -1079,6 +1095,8 @@ class KirchhoffPD:
             np_disp = np.array(self.disp_z)
             np_disp[fict_slicer] = -np_disp[source_slicer]
             self.disp_z = tf.Variable(np_disp, dtype=tf.float32)
+
+        return disp_z_slope_x, disp_z_slope_y
 
 
     def _calc_fict_disp(self, np_disp, fict_slicer, source_slicer, slope_x, slope_y):

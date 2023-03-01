@@ -18,7 +18,8 @@ class PlotFigure:
 
         self.ax4 = self.fig.add_subplot(234)
         self.ax5 = self.fig.add_subplot(235)
-        self.ax3 = self.fig.add_subplot(233, projection='3d')
+        self.ax3 = self.fig.add_subplot(233, projection='3d') 
+        # ^ This 3D projected ax has to be the last (otherwise, colorbar will be messed up)
 
         # self.disp_history = np.load("./output/disp_z_history.npy")
         # self.time_history = np.load("./output/time_history.npy")

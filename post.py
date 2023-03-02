@@ -159,7 +159,7 @@ class PlotFigure:
         ax.set_ylabel("z-displacement")
         ax.grid(ls=":")
         ax.plot(init_coord_x[row_mask], self.disp_history[self.time_step_idx, :, :][row_mask],
-                marker="o", markersize=2)
+                linestyle="", marker="o", markersize=2)
 
         if save == True:
             save_data_as_CSV(self.data_dir, 
